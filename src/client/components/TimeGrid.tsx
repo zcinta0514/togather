@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { Fragment, useRef } from 'react';
 import type { AvailabilityLevel, Granularity } from '../../shared/types';
 
 interface Props {
@@ -15,6 +15,20 @@ interface Props {
   counts?: number[];
 }
 
+/**
+ * 一行放几天。
+ *
+ * 曾经是写死 14 列的平铺，结果 320px 屏幕上每格只剩 13.8px ——
+ * 远低于 44px 的触控下限，点都点不准；而且折行之后每个格子的日期标签
+ * 是绝对定位在格子上方的，第二行开始正好压在上一行的格子上。
+ *
+ * 改成「每天一列、一周一行」：每列约 36px 可点，日期标签放在列顶，
+ * 折行时不会压到上一行。顺带也更符合人对日程的直觉。
+ */
+const DAYS_PER_ROW = 7;
+
+const PERIODS = ['早', '午'];
+
 // 「可以」和「勉强」用渐变 + 内高光做出微微凸起的果冻感（见 index.css）。
 // 「不行」保持扁平 —— 它是底色，不该有存在感。
 const LEVEL_CLASS: Record<AvailabilityLevel, string> = {
@@ -23,22 +37,23 @@ const LEVEL_CLASS: Record<AvailabilityLevel, string> = {
   2: 'cell-lv2 cell-jelly',
 };
 
-/** 入场动画的错峰延迟。封顶 600ms —— 90 格的网格不能让最后一个等两秒 */
-const enterDelay = (i: number) => `${Math.min(i * 22, 600)}ms`;
+/** 入场动画的错峰延迟，封顶 600ms —— 90 格不能让最后一个等两秒 */
+const enterDelay = (i: number) => `${Math.min(i * 18, 600)}ms`;
 
-/** 北京时间下的「月/日」标签 */
-function dayLabel(ts: number): string {
+/** 北京时间下的「月/日」 */
+function partsOf(ts: number) {
   const d = new Date((ts + 8 * 3600) * 1000);
-  return `${d.getUTCMonth() + 1}/${d.getUTCDate()}`;
-}
-
-function periodLabel(ts: number): string {
-  return ts % 86400 === 0 ? '上午' : '下午';
+  return { month: d.getUTCMonth() + 1, day: d.getUTCDate() };
 }
 
 /** 点一下的循环：可以 → 勉强 → 不行 → 可以 */
 function nextLevel(cur: AvailabilityLevel): AvailabilityLevel {
   return cur === 2 ? 1 : cur === 1 ? 0 : 2;
+}
+
+/** 生成 n 个占位格子，用来把不满一周的最后一行补齐 */
+function filler(n: number) {
+  return Array.from({ length: Math.max(0, n) }, (_, i) => <div key={`gap-${i}`} />);
 }
 
 export default function TimeGrid({
@@ -59,9 +74,8 @@ export default function TimeGrid({
   /**
    * 组件内部维护一份「最新值」，不等 React 回传。
    *
-   * 为什么必须这样：一次拖拽会在极短时间内连发多个 pointermove。
-   * 如果每次都读 props 里的 value，那么同一个渲染周期内的几次修改
-   * 都基于同一份旧数组 —— 后一次会把前一次覆盖掉，只有最后一次生效。
+   * 一次拖拽会在极短时间内连发多个 pointermove。如果每次都读 props 里的 value，
+   * 同一个渲染周期内的几次修改都基于同一份旧数组 —— 后一次会覆盖前一次，
    * 表现就是「划过去只涂上了最后一格」。
    */
   const valueRef = useRef(value);
@@ -76,29 +90,36 @@ export default function TimeGrid({
     onChange(next);
   };
 
+  const slotsPerDay = granularity === 'day' ? 1 : 2;
+  const dayCount = Math.ceil(slotCount / slotsPerDay);
+
+  // 把「天」按 DAYS_PER_ROW 切成若干行
+  const weeks: number[][] = [];
+  for (let d = 0; d < dayCount; d += DAYS_PER_ROW) {
+    weeks.push(
+      Array.from({ length: Math.min(DAYS_PER_ROW, dayCount - d) }, (_, k) => d + k),
+    );
+  }
+
   const paintFrom = (clientX: number, clientY: number) => {
     // 用坐标命中测试而不是 pointerenter：
-    // 容器 setPointerCapture 之后，所有指针事件都归容器，
-    // 单个格子的 pointerenter 根本不会触发。
+    // 容器 setPointerCapture 之后所有指针事件都归容器，单个格子的 pointerenter 不会触发
     const el = document.elementFromPoint(clientX, clientY) as HTMLElement | null;
     const raw = el?.dataset?.idx;
     if (raw === undefined) return;
     setCell(Number(raw), dragValue.current);
   };
 
-  const columns = Math.min(slotCount, 14);
-
   return (
     <div
-      className="select-none pt-5"
+      className="select-none"
       style={{ touchAction: readOnly ? 'auto' : 'none' }}
       onPointerDown={(e) => {
         if (readOnly) return;
         e.preventDefault();
         try {
           // 捕获指针，这样手指划出网格再划回来也能继续涂。
-          // 某些环境（合成事件、部分浏览器）不支持捕获会抛异常 ——
-          // 不兜住的话整个 pointerdown 会中断，格子就彻底点不动了。
+          // 某些环境不支持捕获会抛异常 —— 不兜住的话整个 pointerdown 会中断
           e.currentTarget.setPointerCapture(e.pointerId);
         } catch {
           /* 退化成普通拖拽：指针在容器内时依然能连涂 */
@@ -120,62 +141,107 @@ export default function TimeGrid({
         dragging.current = false;
       }}
     >
-      <div className="grid gap-1" style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}>
-        {Array.from({ length: slotCount }, (_, i) => {
-          const ts = slotStarts[i] ?? 0;
-          const level = value[i] ?? 0;
-          const label =
-            granularity === 'half_day' ? `${dayLabel(ts)}${periodLabel(ts)}` : dayLabel(ts);
+      {weeks.map((days, wi) => {
+        const firstTs = slotStarts[days[0] * slotsPerDay] ?? 0;
+        const prevTs = wi > 0 ? (slotStarts[weeks[wi - 1][0] * slotsPerDay] ?? 0) : null;
+        const thisMonth = partsOf(firstTs).month;
+        // 跨月时标出月份，否则 30 天以上找不到北
+        const monthChanged = prevTs === null || partsOf(prevTs).month !== thisMonth;
 
-          if (readOnly) {
-            const ratio = heat ? (heat[i] ?? 0) : 0;
-            const n = counts ? (counts[i] ?? 0) : null;
-            return (
-              <div
-                key={i}
-                title={`${label}：${Math.round(ratio * 100)}%`}
-                className="cell-jelly relative flex aspect-square items-center justify-center rounded-md"
-                style={{
-                  background:
-                    ratio === 0
-                      ? 'var(--color-ink-100)'
-                      : `color-mix(in srgb, var(--color-brand-500) ${Math.round(ratio * 100)}%, var(--color-ink-100))`,
-                }}
-              >
-                <span className="pointer-events-none absolute inset-x-0 -top-4 text-center text-[10px] text-ink-400">
-                  {label}
-                </span>
-                {/* 人数直接写出来。只靠颜色深浅，「3/4」和「4/4」几乎看不出区别，
-                    而且手机上根本没有 hover 可以补足。 */}
-                {n !== null && n > 0 && (
-                  <span className="text-[11px] font-semibold text-white/95">{n}</span>
-                )}
+        return (
+          <div key={wi} className={wi > 0 ? 'mt-5' : ''}>
+            {monthChanged && (
+              <div className="mb-1.5 text-[11px] font-medium tracking-wide text-ink-400">
+                {thisMonth} 月
               </div>
-            );
-          }
+            )}
 
-          return (
-            <button
-              key={i}
-              type="button"
-              data-idx={i}
-              aria-label={`${label} ${['不行', '勉强', '可以'][level]}`}
-              style={{ animationDelay: enterDelay(i) }}
-              className={[
-                'cell-enter relative aspect-square cursor-pointer rounded-md border transition',
-                LEVEL_CLASS[level],
-              ].join(' ')}
+            <div
+              className="grid gap-x-1 gap-y-1"
+              style={{ gridTemplateColumns: `auto repeat(${DAYS_PER_ROW}, minmax(0, 1fr))` }}
             >
-              <span className="pointer-events-none absolute inset-x-0 -top-4 text-center text-[10px] text-ink-400">
-                {label}
-              </span>
-            </button>
-          );
-        })}
-      </div>
+              {/* 表头：空角 + 每天的日期。
+                  末尾必须补齐空格子 —— CSS Grid 是自动排布的，
+                  如果这一行不满 8 列，下一组的元素会被填进同一行的空位。
+                  最后一周只有 3 天时就会看到「早」标签跑进日期那一行。 */}
+              <div />
+              {days.map((d, di) => {
+                const p = partsOf(slotStarts[d * slotsPerDay] ?? 0);
+                // 一周跨月时，新月份的头一天要带上月份 ——
+                // 否则「10/28–11/3」那一行里的 1、2、3 会让人以为是 10 月
+                const showMonth =
+                  p.day === 1 || (di === 0 && wi > 0 && partsOf(firstTs).month !== thisMonth);
+                return (
+                  <div
+                    key={d}
+                    className={[
+                      'pb-1 text-center leading-none',
+                      showMonth ? 'text-[10px] font-medium text-ink-600' : 'text-[11px] text-ink-400',
+                    ].join(' ')}
+                  >
+                    {showMonth ? `${p.month}/${p.day}` : p.day}
+                  </div>
+                );
+              })}
+              {filler(DAYS_PER_ROW - days.length)}
+
+              {/* 按天粒度只有一行；按半天有两行，左侧标「早 / 午」 */}
+              {Array.from({ length: slotsPerDay }, (_, k) => (
+                <Fragment key={k}>
+                  <div className="flex items-center pr-1.5 text-[11px] leading-none text-ink-400">
+                    {slotsPerDay > 1 ? PERIODS[k] : ''}
+                  </div>
+
+                  {days.map((d) => {
+                    const i = d * slotsPerDay + k;
+                    if (i >= slotCount) return <div key={d} />;
+
+                    if (readOnly) {
+                      const ratio = heat ? (heat[i] ?? 0) : 0;
+                      const n = counts ? (counts[i] ?? 0) : null;
+                      return (
+                        <div
+                          key={d}
+                          className="cell-jelly flex aspect-square min-h-8 items-center justify-center rounded-md text-[11px] font-semibold text-white/95"
+                          style={{
+                            background:
+                              ratio === 0
+                                ? 'var(--color-ink-100)'
+                                : `color-mix(in srgb, var(--color-brand-500) ${Math.round(ratio * 100)}%, var(--color-ink-100))`,
+                          }}
+                        >
+                          {n !== null && n > 0 ? n : ''}
+                        </div>
+                      );
+                    }
+
+                    const level = value[i] ?? 0;
+                    const { day } = partsOf(slotStarts[i] ?? 0);
+                    const period = slotsPerDay > 1 ? ` ${PERIODS[k]}` : '';
+                    return (
+                      <button
+                        key={d}
+                        type="button"
+                        data-idx={i}
+                        aria-label={`${thisMonth}月${day}日${period} ${['不行', '勉强', '可以'][level]}`}
+                        style={{ animationDelay: enterDelay(i) }}
+                        className={[
+                          'cell-enter relative aspect-square min-h-8 cursor-pointer rounded-md border transition',
+                          LEVEL_CLASS[level],
+                        ].join(' ')}
+                      />
+                    );
+                  })}
+                  {filler(DAYS_PER_ROW - days.length)}
+                </Fragment>
+              ))}
+            </div>
+          </div>
+        );
+      })}
 
       {!readOnly && (
-        <div className="mt-6 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-ink-600">
+        <div className="mt-5 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-ink-600">
           <span className="flex items-center gap-1.5">
             <span className="h-3 w-3 rounded border border-brand-700 bg-brand-500" /> 可以
           </span>
