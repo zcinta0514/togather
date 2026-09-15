@@ -1,0 +1,26 @@
+# 依赖
+node_modules/
+
+# 构建产物
+dist/
+.wrangler/
+.output/
+
+# 本地环境变量（含密钥，绝不提交）
+.dev.vars
+.dev.vars.*
+*.local
+
+# 设计草稿与可视化伴侣产物
+.superpowers/
+
+# 编辑器与系统
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+
+# 日志
+*.log
+npm-debug.log*
