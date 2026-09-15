@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "heshihedi",
+  "name": "togather",
   "main": "src/server/index.ts",
   "compatibility_date": "2026-09-01",
   "compatibility_flags": ["nodejs_compat"],
@@ -22,7 +22,7 @@
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "heshihedi",
+      "database_name": "togather",
       "database_id": "PLACEHOLDER",
       "migrations_dir": "migrations"
     }

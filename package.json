@@ -1,5 +1,5 @@
 {
-  "name": "heshihedi",
+  "name": "togather",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -12,7 +12,8 @@
     "demo": "tsx scripts/demo.ts",
     "smoke": "node scripts/smoke.mjs",
     "typecheck": "tsc --noEmit",
-    "db:migrate:local": "wrangler d1 migrations apply heshihedi --local",
+    "db:migrate:local": "wrangler d1 migrations apply togather --local",
+    "db:migrate:remote": "wrangler d1 migrations apply togather --remote",
     "deploy": "vite build && wrangler deploy"
   },
   "dependencies": {
