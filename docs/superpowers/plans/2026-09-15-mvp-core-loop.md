@@ -967,8 +967,11 @@ import { describe, it, expect } from 'vitest';
 import { buildPlans } from '../src/core/planner';
 import type { AvailabilityLevel, VoteLevel } from '../src/shared/types';
 
+// 简写：'.' 或 '0' = 不行，'~' 或 '1' = 勉强，其余（'2'）= 可以
 const A = (s: string): AvailabilityLevel[] =>
-  s.split('').map((c) => (c === '.' ? 0 : c === '~' ? 1 : 2) as AvailabilityLevel);
+  s
+    .split('')
+    .map((c) => (c === '.' || c === '0' ? 0 : c === '~' || c === '1' ? 1 : 2) as AvailabilityLevel);
 
 /** 造一个测试用输入 */
 function makeInput(opts: {

@@ -15,9 +15,8 @@
     "isolatedModules": true,
     "verbatimModuleSyntax": true,
     "noEmit": true,
-    "types": ["@cloudflare/workers-types", "vite/client"],
-    "paths": { "@/*": ["./src/*"] },
-    "baseUrl": "."
+    "types": ["@cloudflare/workers-types", "vite/client", "node"],
+    "paths": { "@/*": ["./src/*"] }
   },
   "include": ["src", "tests", "vite.config.ts"]
 }
