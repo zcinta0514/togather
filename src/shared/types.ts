@@ -58,6 +58,20 @@ export interface VoteRow {
   level: VoteLevel;
 }
 
+/**
+ * 对外暴露的参与者信息 —— 刻意不含 token。
+ *
+ * token 是认领身份的凭证，拿到它就能冒充别人提交。
+ * 所以接口响应里必须剥掉，绝不能整个 ParticipantRow 直接返回。
+ */
+export interface PublicParticipant {
+  id: string;
+  name: string;
+  isCore: boolean;
+  availability: string;
+  respondedAt: number | null;
+}
+
 // ---------- API 契约 ----------
 
 export interface CreateEventRequest {
@@ -79,7 +93,7 @@ export interface CreateEventResponse {
 export interface EventDetailResponse {
   event: EventRow;
   slotCount: number;
-  participants: ParticipantRow[];
+  participants: PublicParticipant[];
   destinations: DestinationRow[];
   votes: VoteRow[];
 }

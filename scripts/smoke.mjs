@@ -190,14 +190,35 @@ assert(
   '小张在云南方案里显示为「没空」（时间原因优先于意愿原因）',
 );
 
-head(10, '管理密钥哈希不泄露');
+head(10, '朋友点开链接能打开（完整页面加载，不是前端路由）');
+
+// 这是最关键的一条：微信里点开链接 = 一次完整页面加载。
+// 任何把 /e/* 拦在 Worker 里却没实现路由的配置，都会让这里返回 JSON 404。
+for (const path of [`/e/${EID}`, `/e/${EID}/fill`]) {
+  const r = await fetch(`${BASE}${path}`);
+  const ct = r.headers.get('content-type') ?? '';
+  const body = await r.text();
+  assert(r.status === 200, `${path} 返回 200（实际 ${r.status}）`);
+  assert(ct.includes('text/html'), `${path} 返回的是 HTML 而不是 ${ct}`);
+  assert(body.includes('<div id="root">'), `${path} 是应用页面而不是错误 JSON`);
+}
+
+const api404 = await call('GET', '/api/nope');
+assert(api404.status === 404, '不存在的 API 仍然正确返回 404 JSON');
+
+head(11, '凭证不泄露');
 
 assert(!JSON.stringify(res.data).includes('adminKeyHash'), '结果接口里没有 adminKeyHash');
 assert(!JSON.stringify(after.data).includes(ADMIN_KEY), '活动详情里没有管理密钥明文');
-assert(
-  after.data.event.adminKeyHash === '',
-  '活动详情里的 adminKeyHash 字段被清空',
-);
+assert(after.data.event.adminKeyHash === '', '活动详情里的 adminKeyHash 字段被清空');
+
+// token 拿到就能冒充别人提交，必须剥掉
+const leaked = after.data.participants.filter((p) => 'token' in p);
+assert(leaked.length === 0, `参与者列表里没有 token（实际泄露 ${leaked.length} 条）`);
+for (const [, t] of Object.entries(tokens)) {
+  assert(!JSON.stringify(after.data).includes(t), '响应里搜不到任何参与者的 token');
+  break; // 抽查一个就够，全部搜一遍日志会很长
+}
 
 // ─────────────────────────────────────────────
 

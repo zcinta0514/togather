@@ -79,7 +79,14 @@ eventsRoute.get('/api/events/:id', async (c) => {
     // 管理密钥哈希绝不出现在响应里
     event: { ...event, adminKeyHash: '' },
     slotCount: slotCountFor(event.rangeStart, event.rangeEnd, event.granularity),
-    participants: participantRows,
+    // token 也绝不能出现 —— 拿到它就能冒充别人提交
+    participants: participantRows.map((p) => ({
+      id: p.id,
+      name: p.name,
+      isCore: p.isCore,
+      availability: p.availability,
+      respondedAt: p.respondedAt,
+    })),
     destinations: destinationRows,
     votes: scopedVotes,
   });
