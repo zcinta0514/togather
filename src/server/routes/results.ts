@@ -1,8 +1,8 @@
 import { Hono } from 'hono';
-import { eq } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import { events, participants, destinations, votes } from '../schema';
 import { getDb, type Env } from '../db';
-import { slotCountFor, allSlotStarts } from '../../core/slots';
+import { slotCountFor, allSlotStarts, slotsPerDay, slotsForDays } from '../../core/slots';
 import { decodeAvailability } from '../../core/bitmap';
 import { buildPlans, type PlannerDestination } from '../../core/planner';
 import type { ResultsResponse, VoteLevel } from '../../shared/types';
@@ -17,18 +17,24 @@ resultsRoute.get('/api/events/:id/results', async (c) => {
   if (eventRows.length === 0) return c.json({ error: '活动不存在' }, 404);
   const event = eventRows[0];
 
-  const [participantRows, destinationRows, voteRows] = await Promise.all([
+  const [participantRows, destinationRows] = await Promise.all([
     db.select().from(participants).where(eq(participants.eventId, id)),
     db.select().from(destinations).where(eq(destinations.eventId, id)),
-    db.select().from(votes),
   ]);
 
+  // 在 SQL 里按目的地筛投票，不要 select 全表再在 JS 里过滤 ——
+  // 那样每次刷新结果页都要读出【所有活动】的票，成本随整个库增长。
+  const destIds = destinationRows.map((d) => d.id);
+  const scopedVotes = destIds.length
+    ? await db.select().from(votes).where(inArray(votes.destinationId, destIds))
+    : [];
+
   const slotCount = slotCountFor(event.rangeStart, event.rangeEnd, event.granularity);
-  const destIds = new Set(destinationRows.map((d) => d.id));
-  const scopedVotes = voteRows.filter((v) => destIds.has(v.destinationId));
+  const perDay = slotsPerDay(event.granularity);
 
   const plans = buildPlans({
     slotCount,
+    slotsPerDay: perDay,
     participants: participantRows.map((p) => ({
       id: p.id,
       name: p.name,
@@ -51,7 +57,12 @@ resultsRoute.get('/api/events/:id/results', async (c) => {
 
   const respondedCount = participantRows.filter((p) => p.respondedAt !== null).length;
 
-  // 找出「一个方案都没产出」的目的地，单独说明原因，不让它们无声消失
+  // 找出「一个方案都没产出」的目的地，单独说明原因，不让它们无声消失。
+  //
+  // 比较的必须是槽位数对槽位数：slotCount 是格数，daysNeeded 是天数，
+  // 按半天粒度时两者差一倍。原来拿天数直接跟格数比大小，
+  // 一个 3 天的活动（6 格）配一个「要 4 天」的目的地会被判成「放得下」。
+  const rangeDays = Math.floor(slotCount / perDay);
   const plannedDestIds = new Set(plans.map((p) => p.destinationId));
   const unreachable = destinationRows
     .filter((d) => !plannedDestIds.has(d.id))
@@ -59,13 +70,26 @@ resultsRoute.get('/api/events/:id/results', async (c) => {
       destinationId: d.id,
       name: d.name,
       reason:
-        d.daysNeeded > slotCount
-          ? `需要 ${d.daysNeeded} 天，但活动范围只有 ${slotCount} 天`
-          : '这段时间内没人能凑出足够的天数',
+        slotsForDays(d.daysNeeded, event.granularity) > slotCount
+          ? `需要 ${d.daysNeeded} 天，但活动范围只有 ${rangeDays} 天`
+          : `这段时间里没人能空出连续的 ${d.daysNeeded} 天`,
     }));
 
+  // 意愿匿名：「不想去」必须从响应里【整条消失】，不能只是界面不显示。
+  //
+  // 界面上不点名、数据里照样带着人名的话，谁都能按 F12 看到谁不想去 ——
+  // 而「有些话匿名才说得出口」正是这个设置存在的唯一理由。
+  // 人名单删掉之后，界面靠 unwillingCount 显示「另有 N 人不想去」。
+  //
+  // 注意只删 unwilling：busy 是「那天没空」这个事实，不是意见，可以点名，
+  // 而且组织者需要知道差的是谁。
+  const anonymous = event.anonymity === 'vote_anonymous';
+  const safePlans = anonymous
+    ? plans.map((p) => ({ ...p, missing: p.missing.filter((m) => m.reason !== 'unwilling') }))
+    : plans;
+
   return c.json<ResultsResponse>({
-    plans,
+    plans: safePlans,
     slotCount,
     respondedCount,
     totalCount: participantRows.length,

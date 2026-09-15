@@ -4,7 +4,7 @@ import { events, participants, destinations, votes } from '../schema';
 import { getDb, type Env } from '../db';
 import { verifyAdmin, FORBIDDEN } from '../admin';
 import { now } from '../ids';
-import { slotCountFor } from '../../core/slots';
+import { slotCountFor, slotsPerDay, slotsForDays } from '../../core/slots';
 import { decodeAvailability } from '../../core/bitmap';
 import { buildPlans } from '../../core/planner';
 import type { VoteLevel } from '../../shared/types';
@@ -46,18 +46,24 @@ adminActionsRoute.post('/api/events/:id/finalize', async (c) => {
     return c.json({ error: '时间槽位不合法' }, 400);
   }
 
-  const endSlot = body.startSlot + dest.daysNeeded - 1;
+  // daysNeeded 是天数，槽位号是格数 —— 按半天粒度时一格只有半天。
+  // 直接相加会把要定案的窗口截短一半，下面的「包含」匹配于是匹配不上，
+  // 表现是点了「定这个」却报「这个时段凑不出可行方案」。
+  const endSlot = body.startSlot + slotsForDays(dest.daysNeeded, event.granularity) - 1;
   const slotCount = slotCountFor(event.rangeStart, event.rangeEnd, event.granularity);
 
   // 服务端重算一遍，拿真正能来的人 ——
   // 不能直接信客户端传上来的名单，也不能拿全部参与者充数。
+  // 只要这个目的地的票 —— 不要 select 全表再过滤，
+  // 那样每次定案都要把整个库的票读一遍，而这里是在写路径上
   const [participantRows, voteRows] = await Promise.all([
     db.select().from(participants).where(eq(participants.eventId, eventId)),
-    db.select().from(votes),
+    db.select().from(votes).where(eq(votes.destinationId, dest.id)),
   ]);
 
   const plans = buildPlans({
     slotCount,
+    slotsPerDay: slotsPerDay(event.granularity),
     participants: participantRows.map((p) => ({
       id: p.id,
       name: p.name,

@@ -27,3 +27,6 @@ Thumbs.db
 # 日志
 *.log
 npm-debug.log*
+
+# 截图脚本的产物（scripts/shoot.mjs）
+.shots/

@@ -409,6 +409,99 @@ for (const [, t] of Object.entries(tokens)) {
   break; // 抽查一个就够，全部搜一遍日志会很长
 }
 
+head(18, '意愿匿名 —— 「不想去」的人名不能从接口里漏出去');
+
+// 这个设置原先只在界面上生效：不点名，但数据整包照发，
+// 谁都能按 F12 看到谁投了「不想去」—— 而「不想去」正是它唯一要保护的东西。
+// 下面几条盯的是【响应体里到底有没有】，不是界面上显不显示。
+const anon = await call('POST', '/api/events', {
+  title: '匿名测试',
+  rangeStart: RANGE_START,
+  rangeEnd: RANGE_END,
+  granularity: 'day',
+  collectDestinations: true,
+  budgetEnabled: false,
+  anonymity: 'vote_anonymous',
+});
+
+const anonTokens = {};
+for (const n of ['甲', '乙', '丙']) {
+  const r = await call('POST', `/api/events/${anon.data.eventId}/join`, { name: n });
+  anonTokens[n] = r.data.token;
+}
+const anonDest = await call('POST', `/api/events/${anon.data.eventId}/destinations`, {
+  token: anonTokens['甲'],
+  name: '青岛',
+  daysNeeded: 2,
+});
+await call('POST', `/api/events/${anon.data.eventId}/submit`, {
+  token: anonTokens['甲'],
+  name: '甲',
+  availability: avail('2222222'),
+  votes: [{ destinationId: anonDest.data.destinationId, level: 2 }],
+});
+await call('POST', `/api/events/${anon.data.eventId}/submit`, {
+  token: anonTokens['乙'],
+  name: '乙',
+  availability: avail('2222222'),
+  votes: [{ destinationId: anonDest.data.destinationId, level: 2 }],
+});
+// 丙 全程有空，但明确投了「不想去」—— 他就是要被保护的那个人
+await call('POST', `/api/events/${anon.data.eventId}/submit`, {
+  token: anonTokens['丙'],
+  name: '丙',
+  availability: avail('2222222'),
+  votes: [{ destinationId: anonDest.data.destinationId, level: 0 }],
+});
+
+const anonDetail = await call('GET', `/api/events/${anon.data.eventId}`);
+assert(
+  anonDetail.data.votes.length === 0,
+  `不带 token 读活动详情，一条投票都拿不到（实际 ${anonDetail.data.votes.length} 条）`,
+);
+
+const anonMine = await call(
+  'GET',
+  `/api/events/${anon.data.eventId}?token=${anonTokens['甲']}`,
+);
+assert(
+  anonMine.data.votes.length === 1 && anonMine.data.votes[0].level === 2,
+  `带上自己的 token 才拿回自己那一条（实际 ${anonMine.data.votes.length} 条）`,
+);
+assert(
+  !JSON.stringify(anonMine.data).includes(anonTokens['丙']),
+  '别人的 token 不会跟着响应发出来',
+);
+
+const anonRes = await call('GET', `/api/events/${anon.data.eventId}/results`);
+const anonPlan = anonRes.data.plans[0];
+assert(anonPlan !== undefined, '匿名活动照样能算出方案');
+assert(
+  anonPlan?.unwillingCount === 1,
+  `「另有几人不想去」这个数还在（实际 ${anonPlan?.unwillingCount}）`,
+);
+assert(
+  !anonPlan?.missing?.some((m) => m.reason === 'unwilling'),
+  '结果里没有「不想去」的人名条目 —— 只删了界面上的显示等于没删',
+);
+// 搜的是【名字】不是 ID：参与者 ID 是随机短串，名字才是能认出人的那个。
+// 丙 全程有空、只投了「不想去」，所以他不该出现在方案的任何位置。
+assert(
+  !JSON.stringify(anonRes.data).includes('丙'),
+  '整个结果响应里搜不到「丙」这个名字',
+);
+
+// 对照组：非匿名的活动必须照常点名，别把功能改没了
+const openPlan = d.plans.find((p) => p.destinationName === '云南');
+assert(
+  openPlan?.missing?.some((m) => m.reason === 'unwilling'),
+  '对照组：非匿名活动依然点名「不想去」的人',
+);
+
+await call('POST', `/api/events/${anon.data.eventId}/delete`, {
+  adminKey: anon.data.adminKey,
+});
+
 // ─────────────────────────────────────────────
 
 console.log(`\n${'─'.repeat(52)}`);

@@ -13,9 +13,12 @@ function makeInput(opts: {
   slotCount: number;
   people: Array<{ id: string; avail: string; core?: boolean; responded?: boolean }>;
   dests: Array<{ id: string; days: number; votes: Record<string, VoteLevel> }>;
+  /** 一个自然日占几格：1 = 按天（默认），2 = 按半天 */
+  slotsPerDay?: number;
 }) {
   return {
     slotCount: opts.slotCount,
+    slotsPerDay: opts.slotsPerDay ?? 1,
     participants: opts.people.map((p) => ({
       id: p.id,
       name: p.id,
@@ -135,7 +138,7 @@ describe('buildPlans — 基础行为', () => {
     expect(buildPlans(input)).toEqual([]);
   });
 
-  it('参与者少于 3 人时直接给并排对照，不做方案枚举', () => {
+  it('只有一两个人时也走同一条路，结果照常给', () => {
     const input = makeInput({
       slotCount: 2,
       people: [{ id: 'a', avail: '22' }],
@@ -143,7 +146,26 @@ describe('buildPlans — 基础行为', () => {
     });
     const plans = buildPlans(input);
     expect(plans).toHaveLength(1);
-    expect(plans[0].blockedReason).toBe('参与者不足 3 人，直接给出对照表');
+    expect(plans[0].attendeeIds).toEqual(['a']);
+  });
+
+  it('第一个投票的人没空，后面的人照样成方案 —— 不能把整个目的地丢掉', () => {
+    // 曾经有一条「少于 3 人就直接给对照表」的捷径，它只看 willing[0]
+    // 有没有可行窗口：他没有就整个目的地作罢，哪怕后面的人都能去。
+    // 于是同一批人、换个加入顺序，答案就不一样了。
+    const mk = (order: string[]) =>
+      makeInput({
+        slotCount: 7,
+        people: order.map((id) => ({ id, avail: id === '甲' ? '.......' : '2222222' })),
+        dests: [{ id: '云南', days: 5, votes: { 甲: 2, 乙: 2 } }],
+      });
+
+    const forward = buildPlans(mk(['甲', '乙']));
+    const backward = buildPlans(mk(['乙', '甲']));
+
+    expect(forward).toHaveLength(1);
+    expect(forward[0].attendeeIds).toEqual(['乙']);
+    expect(backward[0].attendeeIds).toEqual(['乙']);
   });
 
   it('时间完全不重叠时，给出每人单独成行的方案，而不是抛异常或返回空', () => {
@@ -276,5 +298,85 @@ describe('buildPlans — 砍掉被支配的方案', () => {
     expect(plans[0].attendeeIds).toHaveLength(4);
     expect(plans[1].destinationName).toBe('云南');
     expect(plans[1].attendeeIds).toHaveLength(2);
+  });
+});
+
+describe('buildPlans — 按半天粒度：天数必须先换算成槽位', () => {
+  // 参与者填的是「大概要去几天」，算法吃的是槽位。
+  // 按半天粒度时一格只有半天，1 天 = 2 格。
+  // 曾经把 daysNeeded 直接当槽位数用：按天粒度下碰巧对，
+  // 按半天粒度下「要 2 天」只占 2 格（=1 天），而卡片上照写「2 天」。
+
+  it('只空一天半的人，进不了「要两天」的方案', () => {
+    // 10/1–10/3 按半天 = 6 格；莫干山要 2 天 = 4 格
+    const plans = buildPlans(
+      makeInput({
+        slotCount: 6,
+        slotsPerDay: 2,
+        people: [
+          { id: '甲', avail: '222222' },
+          { id: '乙', avail: '222222' },
+          // 只有第 3–5 格（10/2 上午 到 10/3 上午）有空，合计一天半 —— 不够两天
+          { id: '丙', avail: '002220' },
+        ],
+        dests: [{ id: '莫干山', days: 2, votes: { 甲: 2, 乙: 2, 丙: 2 } }],
+      }),
+    );
+
+    const plan = plans[0];
+    expect(plan.attendeeIds).toContain('甲');
+    expect(plan.attendeeIds).toContain('乙');
+    // 把 2 天错当成 2 格时，丙那三格就够用了，会被算成能去
+    expect(plan.attendeeIds).not.toContain('丙');
+    expect(plan.missing).toContainEqual({ participantId: '丙', name: '丙', reason: 'busy' });
+  });
+
+  it('要 3 天但活动总共只有 2 天 → 一个方案都没有', () => {
+    // 10/1–10/2 按半天 = 4 格 = 2 天。要 3 天得占 6 格，放不下。
+    // 错当成 3 格时 4 格的活动放得下，会凭空算出一个「3 天」的一天半行程。
+    const plans = buildPlans(
+      makeInput({
+        slotCount: 4,
+        slotsPerDay: 2,
+        people: [
+          { id: '甲', avail: '2222' },
+          { id: '乙', avail: '2222' },
+          { id: '丙', avail: '2222' },
+        ],
+        dests: [{ id: '云南', days: 3, votes: { 甲: 2, 乙: 2, 丙: 2 } }],
+      }),
+    );
+    expect(plans).toEqual([]);
+  });
+
+  it('人少于 3 个时同样按天数换算成槽位', () => {
+    const plans = buildPlans(
+      makeInput({
+        slotCount: 4,
+        slotsPerDay: 2,
+        people: [
+          { id: '甲', avail: '2222' },
+          { id: '乙', avail: '2222' },
+        ],
+        dests: [{ id: '云南', days: 3, votes: { 甲: 2, 乙: 2 } }],
+      }),
+    );
+    expect(plans).toEqual([]);
+  });
+
+  it('daysNeeded 对外仍然是「天」，不会被换算成格数', () => {
+    const plans = buildPlans(
+      makeInput({
+        slotCount: 6,
+        slotsPerDay: 2,
+        people: [
+          { id: '甲', avail: '222222' },
+          { id: '乙', avail: '222222' },
+          { id: '丙', avail: '222222' },
+        ],
+        dests: [{ id: '莫干山', days: 2, votes: { 甲: 2, 乙: 2, 丙: 2 } }],
+      }),
+    );
+    expect(plans[0].daysNeeded).toBe(2);
   });
 });

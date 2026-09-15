@@ -4,7 +4,7 @@ import { api, parseFinalizedPlan } from '../lib/api';
 import { getAdminKey } from '../lib/storage';
 import { downloadTextFile } from '../lib/download';
 import { buildIcs } from '../../core/ics';
-import { slotRangeLabel } from '../../core/slots';
+import { slotRangeLabel, slotsForDays } from '../../core/slots';
 import ShareCard from '../components/ShareCard';
 import type { EventDetailResponse } from '../../shared/types';
 
@@ -87,8 +87,12 @@ export default function FinalPage() {
   const range = slotRangeLabel(event.rangeStart, plan.startSlot, plan.endSlot, event.granularity);
   const link = `${location.origin}/e/${id}`;
 
-  const windowDays = plan.endSlot - plan.startSlot + 1;
-  const flexible = plan.daysNeeded > 0 && windowDays > plan.daysNeeded;
+  // 窗口长度是【格数】，daysNeeded 是【天数】，按半天粒度时两者差一倍。
+  // 拿格数直接跟天数比，会把「窗口正好等于行程」误判成「这几天任选」——
+  // 于是卡片上多出一句「任选」，而其实并没有可选的余地。
+  const needSlots = slotsForDays(plan.daysNeeded, event.granularity);
+  const windowSlots = plan.endSlot - plan.startSlot + 1;
+  const flexible = plan.daysNeeded > 0 && windowSlots > needSlots;
 
   const shareText = [
     `【${event.title}】定啦`,
@@ -103,7 +107,9 @@ export default function FinalPage() {
     if (!plan) return;
     // 日历要的是具体日期，不是「窗口」。
     // 窗口比行程长时按最早的那几天排 —— 具体哪几天群里定，先占上位置。
-    const icsEnd = plan.daysNeeded > 0 ? plan.startSlot + plan.daysNeeded - 1 : plan.endSlot;
+    // 同样是格数对格数。按半天粒度时加天数会短一半，
+    // 导进日历的提醒就只盖住行程的前半段。
+    const icsEnd = plan.daysNeeded > 0 ? plan.startSlot + needSlots - 1 : plan.endSlot;
     const ics = buildIcs({
       eventId: id,
       title: event.title,

@@ -29,6 +29,10 @@ export default function PlanCard({
   const isChampion = rank === 0 && !plan.blocked;
   const busy = plan.missing.filter((m) => m.reason === 'busy');
   const unwilling = plan.missing.filter((m) => m.reason === 'unwilling');
+  // 意愿匿名时服务端把「不想去」的人名整条删掉了 —— missing 里查不到他们，
+  // 数量只能看 unwillingCount。界面不显示但数据还在的话，这个设置就是摆设。
+  const unwillingCount =
+    anonymity === 'vote_anonymous' ? plan.unwillingCount : unwilling.length;
 
   return (
     <button
@@ -74,14 +78,14 @@ export default function PlanCard({
         </p>
       )}
 
-      {(busy.length > 0 || unwilling.length > 0) && (
+      {(busy.length > 0 || unwillingCount > 0) && (
         <p className="mt-1 text-xs text-ink-400">
           ✕ {busy.map((m) => `${nameOf(m.participantId)}（没空）`).join('　')}
-          {busy.length > 0 && unwilling.length > 0 ? '　' : ''}
+          {busy.length > 0 && unwillingCount > 0 ? '　' : ''}
           {/* 意愿匿名时不点名，只说人数 —— 有些话匿名才说得出口 */}
           {anonymity === 'vote_anonymous'
-            ? unwilling.length > 0
-              ? `另有 ${unwilling.length} 人不想去`
+            ? unwillingCount > 0
+              ? `另有 ${unwillingCount} 人不想去`
               : ''
             : unwilling.map((m) => `${nameOf(m.participantId)}（不想去）`).join('　')}
         </p>

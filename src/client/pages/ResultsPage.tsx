@@ -57,7 +57,10 @@ export default function ResultsPage() {
 
   async function handleFinalize(plan: PlanDto) {
     if (!adminKey) return;
-    setBusy(`final-${plan.startSlot}`);
+    // 忙标记必须带上目的地：不同目的地常常共享同一个起始槽位
+    // （10/5–10/7 去莫干山、10/5–10/7 去千岛湖），只按槽位做 key
+    // 会让点其中一个的时候，另一个也变成「定案中…」并被禁用。
+    setBusy(`final-${plan.destinationId}-${plan.startSlot}`);
     try {
       await api.finalize(id, {
         adminKey,
@@ -100,6 +103,29 @@ export default function ResultsPage() {
 
   const visible = showAll ? results.plans : results.plans.slice(0, DEFAULT_VISIBLE_PLANS);
   const hiddenCount = results.plans.length - visible.length;
+
+  /**
+   * 一个方案都没有，原因不止一种。
+   *
+   * 方案是由【目的地】驱动的，所以「压根没收集目的地」和「收集了但没人提名」
+   * 这两种情况也会走到空列表。这时候说「凑不出共同时间」是错的 ——
+   * 时间从来就没被拿去算过。组织者会照着这句话去放宽日期范围，
+   * 而真正该改的是设置，白折腾一圈还找不到原因。
+   */
+  const emptyState = !detail.event.collectDestinations
+    ? {
+        title: '这个活动没有收集目的地',
+        hint: '没有候选地点就没有方案可算。上面的进度是大家填时间的统计，先看那个。',
+      }
+    : detail.destinations.length === 0
+      ? {
+          title: '还没人提名要去哪儿',
+          hint: '在填写页提名一个想去的地方、填上大概要去几天，这里就能算出方案了。',
+        }
+      : {
+          title: '这段时间内凑不出共同时间',
+          hint: '建议把时间范围放宽一点，或者再等等还没填的人。',
+        };
 
   return (
     <main className="mx-auto max-w-2xl space-y-6 p-5 pb-16">
@@ -227,10 +253,8 @@ export default function ResultsPage() {
 
         {results.plans.length === 0 ? (
           <div className="rounded-[var(--radius-card)] border border-ink-200 bg-white p-6 text-center">
-            <p className="text-sm text-ink-600">这段时间内凑不出共同时间</p>
-            <p className="mt-2 text-xs text-ink-400">
-              建议把时间范围放宽一点，或者再等等还没填的人
-            </p>
+            <p className="text-sm text-ink-600">{emptyState.title}</p>
+            <p className="mt-2 text-xs text-ink-400">{emptyState.hint}</p>
           </div>
         ) : (
           <>
@@ -260,11 +284,13 @@ export default function ResultsPage() {
                     <div className="mt-1.5 flex justify-end">
                       <button
                         type="button"
-                        disabled={busy === `final-${plan.startSlot}`}
+                        disabled={busy === `final-${plan.destinationId}-${plan.startSlot}`}
                         onClick={() => handleFinalize(plan)}
                         className="rounded-[var(--radius-btn)] px-3 py-1.5 text-xs text-ink-400 transition hover:bg-brand-100 hover:text-brand-700 disabled:opacity-40"
                       >
-                        {busy === `final-${plan.startSlot}` ? '定案中…' : '定这个 →'}
+                        {busy === `final-${plan.destinationId}-${plan.startSlot}`
+                          ? '定案中…'
+                          : '定这个 →'}
                       </button>
                     </div>
                   )}

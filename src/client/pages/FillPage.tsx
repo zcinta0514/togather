@@ -25,14 +25,16 @@ export default function FillPage() {
   useEffect(() => {
     let alive = true;
     (async () => {
+      // 先取本机凭证，再请求 —— 意愿匿名的活动要靠这个 token
+      // 服务端才肯把「我自己投过什么」发回来（别人的票服务端一律不给）
+      const me = getParticipation(id);
       try {
-        const d = await api.getEvent(id);
+        const d = await api.getEvent(id, me?.token);
         if (!alive) return;
         setDetail(d);
 
         // 之前填过就把答案捞回来 —— 免注册的前提下，
         // localStorage 里的 participantId 就是我们能用的认领方式
-        const me = getParticipation(id);
         const mine = me ? d.participants.find((p) => p.id === me.participantId) : undefined;
 
         setAvailability(
@@ -109,7 +111,7 @@ export default function FillPage() {
   async function handleNominate(n: string, daysNeeded: number, budgetLevel: number | null) {
     const token = await ensureJoined();
     const created = await api.nominate(id, { token, name: n, daysNeeded, budgetLevel });
-    const fresh = await api.getEvent(id);
+    const fresh = await api.getEvent(id, token);
     setDetail(fresh);
     // 自己提的名，默认就是「想去」
     setVotes((v) => ({ ...v, [created.destinationId]: 2 }));

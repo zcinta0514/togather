@@ -136,6 +136,13 @@ export interface EventDetailResponse {
   slotCount: number;
   participants: PublicParticipant[];
   destinations: DestinationRow[];
+  /**
+   * 投票明细。
+   *
+   * 【意愿匿名时这里只会有你自己那几条】—— 传入自己的 token 才能拿到。
+   * 匿名不能只靠界面不显示：数据还在响应里的话，谁都能按 F12 看到
+   * 谁投了「不想去」，那这个设置就白设了。
+   */
   votes: VoteRow[];
 }
 
@@ -172,7 +179,16 @@ export interface PlanDto {
   endSlot: number; // 闭区间
   attendeeIds: string[];
   weakCount: number;
+  /**
+   * 来不了的人及原因。
+   *
+   * 意愿匿名时，reason 为 'unwilling' 的条目会被服务端**整条删掉**
+   * （只留 busy 那些），数量改由 unwillingCount 给出。
+   * 「不想去」是这个设置唯一要保护的东西，让它在响应里出现就等于没设。
+   */
   missing: Array<{ participantId: string; name: string; reason: 'busy' | 'unwilling' }>;
+  /** 有多少人「不想去」。匿名时 missing 里查不到，只能看这个数 */
+  unwillingCount: number;
   blocked: boolean;
   blockedReason?: string;
 }

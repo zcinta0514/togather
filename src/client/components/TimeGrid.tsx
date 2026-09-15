@@ -165,15 +165,17 @@ export default function TimeGrid({
                   如果这一行不满 8 列，下一组的元素会被填进同一行的空位。
                   最后一周只有 3 天时就会看到「早」标签跑进日期那一行。 */}
               <div />
-              {days.map((d, di) => {
+              {days.map((d) => {
                 const p = partsOf(slotStarts[d * slotsPerDay] ?? 0);
                 // 一周跨月时，新月份的头一天要带上月份 ——
                 // 否则「10/28–11/3」那一行里的 1、2、3 会让人以为是 10 月
-                const showMonth =
-                  p.day === 1 || (di === 0 && wi > 0 && partsOf(firstTs).month !== thisMonth);
+                const showMonth = p.day === 1;
                 return (
                   <div
-                    key={d}
+                    // 必须带前缀：日期格的 0–6 和下面「早/午」那两行的 Fragment
+                    // key 0、1 是同一层兄弟节点，不加前缀会撞 key，
+                    // React 会报警告并按不可预期的方式复用节点
+                    key={`day-${d}`}
                     className={[
                       'pb-1 text-center leading-none',
                       showMonth ? 'text-[10px] font-medium text-ink-600' : 'text-[11px] text-ink-400',
@@ -187,7 +189,7 @@ export default function TimeGrid({
 
               {/* 按天粒度只有一行；按半天有两行，左侧标「早 / 午」 */}
               {Array.from({ length: slotsPerDay }, (_, k) => (
-                <Fragment key={k}>
+                <Fragment key={`period-${k}`}>
                   <div className="flex items-center pr-1.5 text-[11px] leading-none text-ink-400">
                     {slotsPerDay > 1 ? PERIODS[k] : ''}
                   </div>
@@ -216,19 +218,33 @@ export default function TimeGrid({
                     }
 
                     const level = value[i] ?? 0;
-                    const { day } = partsOf(slotStarts[i] ?? 0);
+                    // 月份必须取自【这一格自己】的时间，不能用 thisMonth。
+                    // thisMonth 是这一行第一天的月份，跨月那一行里会用错 ——
+                    // 10/28–11/3 这一行的 11/2 会被念成「10月2日」。
+                    const { month, day } = partsOf(slotStarts[i] ?? 0);
                     const period = slotsPerDay > 1 ? ` ${PERIODS[k]}` : '';
                     return (
                       <button
                         key={d}
                         type="button"
                         data-idx={i}
-                        aria-label={`${thisMonth}月${day}日${period} ${['不行', '勉强', '可以'][level]}`}
+                        aria-label={`${month}月${day}日${period} ${['不行', '勉强', '可以'][level]}`}
                         style={{ animationDelay: enterDelay(i) }}
                         className={[
                           'cell-enter relative aspect-square min-h-8 cursor-pointer rounded-md border transition',
                           LEVEL_CLASS[level],
                         ].join(' ')}
+                        // 整个网格的输入都挂在容器的 pointer 事件上，所以格子
+                        // 虽然是个 <button>、也能被 Tab 聚焦，敲回车却什么都不会发生 ——
+                        // 只用键盘的人根本填不了这张表。
+                        //
+                        // 键盘触发的 click 和鼠标点击靠 detail 区分：键盘的 detail 是 0，
+                        // 鼠标的 ≥ 1。鼠标那次已经由容器的 pointerdown 处理过了，
+                        // 这里再切一次只会把结果抵消回原样。
+                        onClick={(e) => {
+                          if (e.detail !== 0) return;
+                          setCell(i, nextLevel(valueRef.current[i] ?? 0));
+                        }}
                       />
                     );
                   })}

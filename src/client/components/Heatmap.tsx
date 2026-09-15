@@ -74,7 +74,12 @@ export default function Heatmap({
             <li key={i}>
               <span className="text-ink-600">
                 {d.getUTCMonth() + 1}/{d.getUTCDate()}
-                {granularity === 'half_day' ? (ts % 86400 === 0 ? ' 上午' : ' 下午') : ''}
+                {/* 上下午看的是【槽位序号的奇偶】，不是时间戳。
+                    rangeStart 是当天 00:00 减去 8 小时，所以任何一格的
+                    ts % 86400 只会是 57600 或 14400，永远不等于 0 ——
+                    曾经写成 ts % 86400 === 0，结果是每一格都显示「下午」，
+                    上午那一格从来没对过。同一个坑 slots.ts 里已经标过注释。 */}
+                {granularity === 'half_day' ? (i % 2 === 0 ? ' 上午' : ' 下午') : ''}
               </span>
               ：{names.join('、')}
             </li>

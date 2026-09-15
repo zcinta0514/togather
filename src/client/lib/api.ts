@@ -35,7 +35,16 @@ export const api = {
   createEvent: (body: CreateEventRequest) =>
     req<CreateEventResponse>('/api/events', { method: 'POST', body: JSON.stringify(body) }),
 
-  getEvent: (id: string) => req<EventDetailResponse>(`/api/events/${id}`),
+  /**
+   * 读活动全貌。
+   *
+   * 意愿匿名的活动必须带上自己的 token —— 服务端只回传你自己的票。
+   * 不带也能打开页面，只是看不到自己之前投过什么。
+   */
+  getEvent: (id: string, token?: string) =>
+    req<EventDetailResponse>(
+      `/api/events/${id}${token ? `?token=${encodeURIComponent(token)}` : ''}`,
+    ),
 
   join: (id: string, name: string, token?: string) =>
     req<JoinResponse>(`/api/events/${id}/join`, {

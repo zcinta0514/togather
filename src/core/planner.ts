@@ -19,13 +19,20 @@ export interface PlannerDestination {
 
 export interface PlannerInput {
   slotCount: number;
+  /**
+   * 一个自然日占几个槽位（按天 = 1，按半天 = 2）。
+   *
+   * 必须有这个数，否则没法把参与者的「大概要去几天」换算成算法吃的槽位数。
+   * 之前是直接把 daysNeeded 当槽位数用 —— 按天粒度下碰巧是对的，
+   * 按半天粒度下就把「2 天」算成了 1 天，而卡片上还写着「2 天」。
+   * 做成必填而不是给个默认值 1：默认值会让下一个调用方继续踩同一个坑，
+   * 而且踩得毫无声响。
+   */
+  slotsPerDay: number;
   /** 是否有核心成员，由 participants[].isCore 表达，不需要单独开关 */
   participants: PlannerParticipant[];
   destinations: PlannerDestination[];
 }
-
-/** 少于这个人数就不做方案枚举，直接给对照表 */
-const MIN_FOR_PLANNING = 3;
 
 /** 最多返回多少个方案 */
 const MAX_PLANS = 8;
@@ -42,8 +49,18 @@ export function buildPlans(input: PlannerInput): PlanDto[] {
   const responded = input.participants.filter((p) => p.responded);
 
   if (responded.length === 0) return [];
-  // 边界情况：人太少时算法没有价值，直接给对照表
-  if (responded.length < MIN_FOR_PLANNING) return buildSimpleComparison(input, responded);
+
+  // 曾经这里有一条「少于 3 人就换成并排对照表」的捷径。那个实现是同一件事的
+  // 第二份代码，而且有两处硬伤：只看【第一个投票的人】有没有可行窗口，
+  // 他没有就整个目的地作罢（哪怕后面的人都能去）；窗口也只取他最早的那一段。
+  // 结果是同一个人换个加入顺序，答案就不一样；而且它给出的方案常常比真正
+  // 可行的更小。它唯一多出来的信息 blockedReason 写死在一段 blocked 为 false
+  // 的方案上，界面上根本不渲染。
+  //
+  // 下面这条路径对任意人数都成立，而且被随机差分测试比过 —— 少一份实现就少一类 bug。
+
+  // 「要几天」→「要几格」。换算只在这里发生，后面一律用槽位数。
+  const needSlotsFor = (days: number) => days * input.slotsPerDay;
 
   // 预计算：每个人对每个目的地的可行窗口，按起点索引，方便 O(1) 查
   const windowCache = new Map<string, Map<number, Window>>();
@@ -51,7 +68,7 @@ export function buildPlans(input: PlannerInput): PlanDto[] {
   for (const p of responded) {
     for (const d of input.destinations) {
       const byStart = new Map<number, Window>();
-      for (const w of feasibleWindows(p.availability, d.daysNeeded)) {
+      for (const w of feasibleWindows(p.availability, needSlotsFor(d.daysNeeded))) {
         byStart.set(w.start, w);
         candidateStarts.add(w.start);
       }
@@ -62,8 +79,9 @@ export function buildPlans(input: PlannerInput): PlanDto[] {
   const plans: PlanDto[] = [];
 
   for (const d of input.destinations) {
+    const needSlots = needSlotsFor(d.daysNeeded);
     for (const start of candidateStarts) {
-      const end = start + d.daysNeeded - 1;
+      const end = start + needSlots - 1;
       if (end >= input.slotCount) continue;
 
       const attendeeIds: string[] = [];
@@ -115,6 +133,9 @@ export function buildPlans(input: PlannerInput): PlanDto[] {
         attendeeIds,
         weakCount,
         missing,
+        // 匿名时服务端会把 missing 里的 unwilling 条目删掉，
+        // 所以数量必须单独带一个字段，不然界面上连「几个」都说不出来
+        unwillingCount: missing.filter((m) => m.reason === 'unwilling').length,
         blocked,
         blockedReason: blocked
           ? `核心成员 ${missingCores.map((c) => c.name).join('、')} 到不了`
@@ -230,47 +251,3 @@ function rankAndTrim(plans: PlanDto[]): PlanDto[] {
   return picked;
 }
 
-/**
- * 人少时（< 3 人）不做方案枚举，直接给一张并排对照表。
- * 两三个人的时候，算法算出来的东西人脑一眼就看完了。
- */
-function buildSimpleComparison(input: PlannerInput, responded: PlannerParticipant[]): PlanDto[] {
-  const out: PlanDto[] = [];
-  for (const d of input.destinations) {
-    const willing = responded.filter((p) => (d.votes[p.id] ?? 0) >= 1);
-    if (willing.length === 0) continue;
-
-    // 缓存每个人的可行窗口，避免在 filter 里重复计算
-    const windowsOf = new Map<string, Window[]>();
-    for (const p of willing) windowsOf.set(p.id, feasibleWindows(p.availability, d.daysNeeded));
-
-    // 找到所有人都能到的最早窗口
-    const first = windowsOf.get(willing[0].id)?.[0];
-    if (!first) continue;
-
-    const attendeeIds = willing
-      .filter((p) => (windowsOf.get(p.id) ?? []).some((w) => w.start === first.start))
-      .map((p) => p.id);
-
-    const attendeeSet = new Set(attendeeIds);
-    out.push({
-      destinationId: d.id,
-      destinationName: d.name,
-      daysNeeded: d.daysNeeded,
-      startSlot: first.start,
-      endSlot: first.end,
-      attendeeIds: [...attendeeIds].sort(),
-      weakCount: first.weakCount,
-      missing: responded
-        .filter((p) => !attendeeSet.has(p.id))
-        .map((p) => ({
-          participantId: p.id,
-          name: p.name,
-          reason: (d.votes[p.id] ?? 0) >= 1 ? ('busy' as const) : ('unwilling' as const),
-        })),
-      blocked: false,
-      blockedReason: '参与者不足 3 人，直接给出对照表',
-    });
-  }
-  return out;
-}

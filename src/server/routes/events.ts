@@ -1,9 +1,10 @@
 import { Hono } from 'hono';
-import { eq } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import { events, participants, destinations, votes } from '../schema';
 import { getDb, type Env } from '../db';
 import { shortId, secret, hashKey, now } from '../ids';
-import { slotCountFor } from '../../core/slots';
+import { slotCountFor, rawSlotCount, slotsPerDay } from '../../core/slots';
+import { MAX_SLOTS } from '../../shared/types';
 import type {
   CreateEventRequest,
   CreateEventResponse,
@@ -16,11 +17,18 @@ export const eventsRoute = new Hono<{ Bindings: Env }>();
 
 const VALID_GRANULARITY: Granularity[] = ['day', 'half_day'];
 
+/** 活动名称上限。够写「国庆出去玩」「部门团建」了，挡住的是 1MB 的标题 */
+const MAX_TITLE = 40;
+
 /** 建活动 */
 eventsRoute.post('/api/events', async (c) => {
   const body = await c.req.json<CreateEventRequest>();
 
-  if (!body.title?.trim()) return c.json({ error: '活动名称不能为空' }, 400);
+  const title = body.title?.trim() ?? '';
+  if (!title) return c.json({ error: '活动名称不能为空' }, 400);
+  if (title.length > MAX_TITLE) {
+    return c.json({ error: `活动名称太长了，最多 ${MAX_TITLE} 个字` }, 400);
+  }
   if (!Number.isFinite(body.rangeStart) || !Number.isFinite(body.rangeEnd)) {
     return c.json({ error: '时间范围不合法' }, 400);
   }
@@ -31,13 +39,32 @@ eventsRoute.post('/api/events', async (c) => {
   const slotCount = slotCountFor(body.rangeStart, body.rangeEnd, body.granularity);
   if (slotCount < 1) return c.json({ error: '时间范围太短' }, 400);
 
+  // 超出槽位预算必须报错，不能默默截断。
+  //
+  // 截断的话：活动对外写着「到 12/31」，界面只画到 6/29，两处都没提示。
+  // 八月才有空的人根本没法表达 —— 填不满一格就提交不了，于是他要么
+  // 交不上，要么随便涂一天（假数据），而假数据会直接进方案计算。
+  // 必须用 rawSlotCount：slotCountFor 已经把结果压到 180 了，比不出超限。
+  const perDay = slotsPerDay(body.granularity);
+  const raw = rawSlotCount(body.rangeStart, body.rangeEnd, body.granularity);
+  if (raw > MAX_SLOTS) {
+    return c.json(
+      {
+        error: `时间范围太长了：${
+          body.granularity === 'day' ? '按天' : '按半天'
+        }最多 ${MAX_SLOTS / perDay} 天，当前是 ${Math.ceil(raw / perDay)} 天`,
+      },
+      400,
+    );
+  }
+
   const db = getDb(c.env);
   const id = shortId(6);
   const adminKey = secret(32);
 
   await db.insert(events).values({
     id,
-    title: body.title.trim(),
+    title,
     rangeStart: body.rangeStart,
     rangeEnd: body.rangeEnd,
     timezone: 'Asia/Shanghai',
@@ -66,17 +93,32 @@ eventsRoute.get('/api/events/:id', async (c) => {
   if (eventRows.length === 0) return c.json({ error: '活动不存在' }, 404);
   const event = eventRows[0];
 
-  const [participantRows, destinationRows, voteRows] = await Promise.all([
+  const [participantRows, destinationRows] = await Promise.all([
     db.select().from(participants).where(eq(participants.eventId, id)),
     db.select().from(destinations).where(eq(destinations.eventId, id)),
-    db.select().from(votes),
   ]);
 
-  // 只保留属于本活动的投票；level 出库是 number，收窄成 VoteLevel
-  const destIds = new Set(destinationRows.map((d) => d.id));
-  const scopedVotes = voteRows
-    .filter((v) => destIds.has(v.destinationId))
-    .map((v) => ({ ...v, level: v.level as VoteLevel }));
+  // 投票按目的地 id 在 SQL 里筛，不要 select 全表再在 JS 里过滤 ——
+  // 那样每次打开结果页都要把【所有活动】的票读出来，成本随整个库增长，
+  // 而这个链接是公开的，谁都能刷。
+  const destIds = destinationRows.map((d) => d.id);
+  const voteRows = destIds.length
+    ? await db.select().from(votes).where(inArray(votes.destinationId, destIds))
+    : [];
+
+  // level 出库是 number，收窄成 VoteLevel
+  let scopedVotes = voteRows.map((v) => ({ ...v, level: v.level as VoteLevel }));
+
+  // 意愿匿名：只回传请求者自己的票。
+  //
+  // 这个设置原先只在界面上生效 —— 数据照样整包返回，谁都能按 F12
+  // 看到谁投了「不想去」。而「不想去」正是它唯一要保护的东西。
+  // 现在服务端直接不发：没有 token，或者 token 不是这个活动的人，就只拿到空的。
+  if (event.anonymity === 'vote_anonymous') {
+    const token = c.req.query('token');
+    const mine = token ? participantRows.find((p) => p.token === token) : undefined;
+    scopedVotes = mine ? scopedVotes.filter((v) => v.participantId === mine.id) : [];
+  }
 
   return c.json<EventDetailResponse>({
     // 管理密钥哈希绝不出现在响应里
