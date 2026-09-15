@@ -5,9 +5,15 @@
  *   1. 另开一个终端跑 `npm run dev`
  *   2. npm run smoke
  *
+ *   跑线上：BASE=https://heshihedi.pages.dev npm run smoke
+ *
  * 为什么用 Node 而不是 bash：
  *   Git Bash 在 Windows 上传中文参数会变乱码，四个不同的中文名会变成同一串乱码，
  *   把重名检查误触发成「全部重复」。Node 天生 UTF-8，不受 shell 编码影响。
+ *
+ * ⚠️ 刚部署完别立刻跑线上测试：
+ *   Pages 部署要几十秒才铺到所有边缘节点。部署完马上跑，可能读到旧版本的
+ *   静态资源，出现「明明改好了却断言失败」的假警报。等一分钟再跑。
  */
 
 const BASE = process.env.BASE ?? 'http://localhost:5173';
@@ -310,7 +316,58 @@ assert(del.status === 200, `删除成功（实际 ${del.status}）`);
 const gone = await call('GET', `/api/events/${throwaway.data.eventId}`);
 assert(gone.status === 404, `删除后查不到了（实际 ${gone.status}）`);
 
-head(15, '朋友点开链接能打开（完整页面加载，不是前端路由）');
+head(15, '分享卡片标签（微信里贴链接要显示活动名，不是一行光秃秃的网址）');
+
+const page = await fetch(`${BASE}/e/${EID}`).then((r) => r.text());
+const fillPage = await fetch(`${BASE}/e/${EID}/fill`).then((r) => r.text());
+const homePage = await fetch(`${BASE}/new`).then((r) => r.text());
+
+const ogOf = (htmlText, prop) =>
+  htmlText.match(new RegExp(`<meta property="og:${prop}" content="([^"]*)"`))?.[1];
+
+assert(ogOf(page, 'title') === '国庆出去玩', `活动页 og:title 是活动名（实际 ${ogOf(page, 'title')}）`);
+assert(
+  ogOf(fillPage, 'title') === '国庆出去玩',
+  `填写链接也有卡片 —— 群里发的多数是这一条（实际 ${ogOf(fillPage, 'title')}）`,
+);
+assert(
+  (ogOf(page, 'description') ?? '').includes('已填'),
+  `og:description 说了进度（实际 ${ogOf(page, 'description')}）`,
+);
+assert(
+  (ogOf(page, 'image') ?? '').startsWith('https://'),
+  'og:image 是绝对地址 —— 相对地址爬虫解析不了',
+);
+assert(
+  ogOf(homePage, 'title') !== undefined,
+  '首页也有默认卡片（它不走 Worker，靠 index.html 里的兜底）',
+);
+
+// 没转义的话，引号会把 meta 标签截断，卡片就花了
+const weird = await call('POST', '/api/events', {
+  title: '带"引号"和<尖括号>的活动',
+  rangeStart: RANGE_START,
+  rangeEnd: RANGE_END,
+  granularity: 'day',
+  collectDestinations: false,
+  budgetEnabled: false,
+  anonymity: 'open',
+});
+const weirdPage = await fetch(`${BASE}/e/${weird.data.eventId}`).then((r) => r.text());
+const weirdOg = ogOf(weirdPage, 'title');
+assert(
+  weirdOg !== undefined && weirdOg.includes('&quot;') && weirdOg.includes('&lt;'),
+  `标题里的引号和尖括号被转义了（实际 ${weirdOg}）`,
+);
+assert(
+  !weirdPage.includes('<title>带"引号"'),
+  '页面 title 也没有把原始引号漏出去',
+);
+await call('POST', `/api/events/${weird.data.eventId}/delete`, {
+  adminKey: weird.data.adminKey,
+});
+
+head(16, '朋友点开链接能打开（完整页面加载，不是前端路由）');
 
 // 这是最关键的一条：微信里点开链接 = 一次完整页面加载。
 // 任何把 /e/* 拦在 Worker 里却没实现路由的配置，都会让这里返回 JSON 404。
@@ -326,7 +383,7 @@ for (const path of [`/e/${EID}`, `/e/${EID}/fill`]) {
 const api404 = await call('GET', '/api/nope');
 assert(api404.status === 404, '不存在的 API 仍然正确返回 404 JSON');
 
-head(16, '凭证不泄露');
+head(17, '凭证不泄露');
 
 assert(!JSON.stringify(res.data).includes('adminKeyHash'), '结果接口里没有 adminKeyHash');
 assert(!JSON.stringify(after.data).includes(ADMIN_KEY), '活动详情里没有管理密钥明文');

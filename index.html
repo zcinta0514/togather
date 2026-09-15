@@ -6,6 +6,18 @@
     <title>何时何地</title>
     <meta name="description" content="什么时候有空，想去哪里 —— 一起定" />
     <meta name="theme-color" content="#fbfaf9" />
+    <!--OG_START-->
+    <!-- 默认分享卡片。/e/xxx 会由 Worker 换成活动专属的（见 src/server/og.ts）——
+         必须服务端换，因为微信抓分享卡片读的是原始 HTML，不执行 JS。
+         这段默认值保证其它页面（/new、/my）即使在 Worker 不参与时也有卡片。 -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="何时何地" />
+    <meta property="og:title" content="何时何地 · Togather" />
+    <meta property="og:description" content="什么时候有空，想去哪里 —— 一起定" />
+    <meta property="og:image" content="/og.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <!--OG_END-->
+
   </head>
   <body>
     <div id="root"></div>

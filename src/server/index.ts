@@ -5,10 +5,20 @@ import { participantsRoute } from './routes/participants';
 import { destinationsRoute } from './routes/destinations';
 import { resultsRoute } from './routes/results';
 import { adminActionsRoute } from './routes/admin-actions';
+import { serveSpaWithOg } from './og';
 
 const app = new Hono<{ Bindings: Env }>();
 
 app.get('/api/health', (c) => c.json({ ok: true, ts: Math.floor(Date.now() / 1000) }));
+
+/**
+ * 活动页要注入分享卡片标签，所以必须由 Worker 先接住。
+ *
+ * ⚠️ 注意这里只拦 GET。静态资源（/assets/*、/og.png）走的是别的路径，
+ * 不受影响 —— 上次把 /e/* 交给 Worker 却忘了放行静态资源，
+ * 结果整站 522（见设计文档 §11.2）。
+ */
+app.get('/e/*', serveSpaWithOg);
 
 app.route('/', eventsRoute);
 app.route('/', participantsRoute);
