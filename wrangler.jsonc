@@ -23,7 +23,7 @@
     {
       "binding": "DB",
       "database_name": "togather",
-      "database_id": "PLACEHOLDER",
+      "database_id": "18859584-4a0a-4e86-abb0-9f7dca5ed9d9",
       "migrations_dir": "migrations"
     }
   ]

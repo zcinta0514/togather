@@ -14,6 +14,9 @@ dist/
 # 设计草稿与可视化伴侣产物
 .superpowers/
 
+# 部署时临时生成的配置备份（scripts/build-pages.mjs 用，用完就还原）
+wrangler.worker.jsonc
+
 # 编辑器与系统
 .vscode/*
 !.vscode/extensions.json

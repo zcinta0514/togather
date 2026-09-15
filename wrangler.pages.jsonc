@@ -1,0 +1,22 @@
+{
+  // Cloudflare Pages 专用配置。
+  //
+  // 为什么不复用 wrangler.jsonc：那份是给独立 Worker 用的，里面带着
+  // run_worker_first 和 assets.directory，这些设置会被 Pages 部署继承，
+  // 导致只有 /api/* 走到 Worker，其余请求去找静态资源却找错目录。
+  //
+  // 部署命令：
+  //   npx wrangler pages deploy dist/pages --config wrangler.pages.jsonc
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "heshihedi",
+  "pages_build_output_dir": "./dist/pages",
+  "compatibility_date": "2026-09-15",
+  "compatibility_flags": ["nodejs_compat"],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "togather",
+      "database_id": "18859584-4a0a-4e86-abb0-9f7dca5ed9d9"
+    }
+  ]
+}

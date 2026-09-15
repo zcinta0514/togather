@@ -432,14 +432,48 @@
 浏览器（移动优先）
    │  同一域名，无 CORS
    ▼
-Cloudflare Workers
+Cloudflare Pages（高级模式 · _worker.js）
    ├─ Hono —— API 路由
-   ├─ 静态资源 —— React SPA
+   ├─ 静态资源 —— React SPA（回退到 index.html）
    └─ OG 卡片注入中间件（微信分享预览）
    │
    ▼
 Cloudflare D1（SQLite）· Drizzle ORM
 ```
+
+### 11.1 为什么是 Pages 而不是 Workers —— 一个必须记下来的坑
+
+**`*.workers.dev` 在中国大陆被墙了。** `*.pages.dev` 没有。
+
+这不只是"DNS 解析不到"，TCP 连接本身就失败：
+`curl --resolve` 强行指定 Cloudflare 的 anycast IP 也连不上。
+而 `api.cloudflare.com` 从同一台机器访问是通的 —— 所以**不是 Cloudflare 的网络问题，
+是 `workers.dev` 这个名字被针对了**。
+
+诊断时容易踩的坑：Cloudflare **不给未创建的 Pages 项目名做泛解析**，
+所以未创建的项目名查询会返回 NXDOMAIN，看起来也像"连不上"。
+判断方法是看 DNS 有没有解析出 `2606:4700:310c::` 开头的 Cloudflare 地址 ——
+已存在的项目会解析出来，未存在的不会。
+
+**结论：部署目标是 Pages，网址 `https://heshihedi.pages.dev`。**
+
+### 11.2 Pages 高级模式的三个约束
+
+用 `_worker.js`（高级模式）部署整个应用，必须注意：
+
+1. **Worker 负责所有请求**，包括静态文件。`src/server/index.ts` 的 `notFound`
+   里有一段 `ASSETS` 回退：非 API 请求交给静态资源，资源里找不到的
+   （比如 `/e/xxx` 这种前端路由）再回退到 `index.html`
+2. **Pages 不支持 `--config` 指定配置文件**，只认根目录的 `wrangler.jsonc`。
+   而那份是给 `npm run dev` 用的 Worker 配置
+3. **Cloudflare 的 Vite 插件会留一个配置重定向**（`.wrangler/deploy/config.json`），
+   让 wrangler 去读 Worker 配置。那份配置带着 `run_worker_first` 和
+   `assets.directory`，被 Pages 继承后会导致只有 `/api/*` 走到 Worker，
+   其余请求去找静态资源却找错目录 —— **表现为整站 522**
+
+   所以 `scripts/build-pages.mjs` 在部署前会删掉这个重定向，
+   并把根配置临时换成 Pages 版（`wrangler.pages.jsonc`），
+   部署完用 `try/finally` 换回来。
 
 | 层 | 选择 | 理由 |
 |---|---|---|

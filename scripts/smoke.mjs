@@ -11,8 +11,11 @@
  */
 
 const BASE = process.env.BASE ?? 'http://localhost:5173';
-const RANGE_START = 1759219200; // 10/1 00:00 北京时间
-const RANGE_END = 1759823999; // 10/7 23:59:59 北京时间
+
+// 用算的，不写死数字 —— 手写时间戳很容易差 8 小时，
+// 而那种错在断言里看不出来（槽位序号照样对），只在界面上显示成 9月30日 才暴露。
+const RANGE_START = Math.floor(Date.UTC(2025, 9, 1) / 1000) - 8 * 3600; // 10/1 00:00 北京时间
+const RANGE_END = RANGE_START + 7 * 86400 - 1; // 10/7 23:59:59 北京时间
 
 let passed = 0;
 let failed = 0;
