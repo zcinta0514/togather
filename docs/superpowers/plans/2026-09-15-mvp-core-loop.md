@@ -461,9 +461,10 @@ describe('slotCountFor', () => {
     expect(slotCountFor(start, end, 'day')).toBe(7);
   });
 
-  it('按半天粒度，同一天是 2 格', () => {
+  it('按半天粒度，一整天是 2 格', () => {
     const start = 1759248000;
-    expect(slotCountFor(start, start, 'half_day')).toBe(2);
+    const end = start + DAY - 1; // 当天 23:59:59，和创建活动时传的一致
+    expect(slotCountFor(start, end, 'half_day')).toBe(2);
   });
 
   it('单日按天粒度是 1 格', () => {

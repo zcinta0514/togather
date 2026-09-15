@@ -1,0 +1,21 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "heshihedi",
+  "main": "src/server/index.ts",
+  "compatibility_date": "2026-09-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true },
+  "assets": {
+    "directory": "./dist/client",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*", "/e/*"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "heshihedi",
+      "database_id": "PLACEHOLDER",
+      "migrations_dir": "migrations"
+    }
+  ]
+}

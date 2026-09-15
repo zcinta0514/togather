@@ -1,0 +1,37 @@
+{
+  "name": "heshihedi",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "何时何地 —— 什么时候有空，想去哪里，一起定",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "db:migrate:local": "wrangler d1 migrations apply heshihedi --local",
+    "deploy": "vite build && wrangler deploy"
+  },
+  "dependencies": {
+    "drizzle-orm": "^0.45.2",
+    "hono": "^4.13.8",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "react-router-dom": "^7.18.3"
+  },
+  "devDependencies": {
+    "@cloudflare/vite-plugin": "^1.54.9",
+    "@cloudflare/workers-types": "^5.20260915.1",
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.1",
+    "drizzle-kit": "^0.31.10",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.0",
+    "vitest": "^5.0.1",
+    "wrangler": "^4.131.2"
+  }
+}
