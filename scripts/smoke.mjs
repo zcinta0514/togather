@@ -193,7 +193,124 @@ assert(
   '小张在云南方案里显示为「没空」（时间原因优先于意愿原因）',
 );
 
-head(10, '朋友点开链接能打开（完整页面加载，不是前端路由）');
+head(10, '定案需要管理密钥');
+
+const noKey = await call('POST', `/api/events/${EID}/finalize`, {
+  adminKey: 'wrong-key',
+  destinationId: yn.data.destinationId,
+  startSlot: 0,
+});
+assert(noKey.status === 403, `错误的密钥被拒（实际 ${noKey.status}）`);
+
+head(11, '定案 —— 参加人是服务端重算的，不是拿全部参与者充数');
+
+// 定云南（只有小李能去）。如果实现偷懒拿了全部参与者，
+// attendeeNames 会变成 4 个人 —— 这条就是为了盯住那个偷懒。
+const fin = await call('POST', `/api/events/${EID}/finalize`, {
+  adminKey: ADMIN_KEY,
+  destinationId: yn.data.destinationId,
+  startSlot: 0,
+});
+assert(fin.status === 200, `定案成功（实际 ${fin.status}）`);
+assert(
+  fin.data.plan?.attendeeNames?.length === 1 && fin.data.plan.attendeeNames[0] === '小李',
+  `定案快照里的参加人只有小李（实际 ${JSON.stringify(fin.data.plan?.attendeeNames)}）`,
+);
+assert(
+  fin.data.plan?.destinationName === '云南',
+  `快照里冗余存了目的地名（实际 ${fin.data.plan?.destinationName}）`,
+);
+// 云南要 5 天，但窗口是 10/1–10/7 七天（合并过的）。
+// 两个数都必须记下来 —— 只记窗口会把 5 天的行程显示成 7 天，
+// 只记行程长度又丢掉了「这几天任选」的信息。
+assert(
+  fin.data.plan?.daysNeeded === 5,
+  `行程长度单独记了（实际 ${fin.data.plan?.daysNeeded}）`,
+);
+assert(
+  fin.data.plan.endSlot - fin.data.plan.startSlot + 1 === 7,
+  `窗口没有被截成行程长度（实际 ${fin.data.plan.endSlot - fin.data.plan.startSlot + 1} 天）`,
+);
+
+const afterFin = await call('GET', `/api/events/${EID}`);
+assert(afterFin.data.event.finalizedPlan !== null, '活动行里存下了定案');
+assert(
+  !JSON.stringify(afterFin.data).includes(ADMIN_KEY),
+  '定案响应里没有管理密钥明文',
+);
+
+head(12, '撤销定案');
+
+const unfin = await call('POST', `/api/events/${EID}/unfinalize`, { adminKey: ADMIN_KEY });
+assert(unfin.status === 200, `撤销成功（实际 ${unfin.status}）`);
+const afterUnfin = await call('GET', `/api/events/${EID}`);
+assert(afterUnfin.data.event.finalizedPlan === null, '撤销后回到未定案');
+
+head(13, '核心成员 —— 标记后相关方案会沉底');
+
+const allP = afterUnfin.data.participants;
+const zhang = allP.find((p) => p.name === '小张');
+assert(zhang !== undefined, '找得到小张');
+
+const noKeyCore = await call('PATCH', `/api/events/${EID}/participants/${zhang.id}`, {
+  adminKey: 'wrong-key',
+  isCore: true,
+});
+assert(noKeyCore.status === 403, `标记核心成员也需要管理密钥（实际 ${noKeyCore.status}）`);
+
+const setCore = await call('PATCH', `/api/events/${EID}/participants/${zhang.id}`, {
+  adminKey: ADMIN_KEY,
+  isCore: true,
+});
+assert(setCore.status === 200 && setCore.data.isCore === true, '小张被标为核心成员');
+
+const withCore = await call('GET', `/api/events/${EID}/results`);
+const yunnanPlan = withCore.data.plans.find((p) => p.destinationName === '云南');
+const mdsPlan = withCore.data.plans.find((p) => p.destinationName === '莫干山');
+assert(
+  yunnanPlan?.blocked === true,
+  '云南方案里没有小张 → 标为核心后变成 blocked',
+);
+assert(
+  mdsPlan?.blocked === false,
+  '莫干山方案里有小张 → 不受影响',
+);
+assert(
+  withCore.data.plans[0]?.destinationName === '莫干山',
+  '冠军仍然是莫干山（4 人，核心也到齐）',
+);
+
+// 取消标记，回到干净状态
+await call('PATCH', `/api/events/${EID}/participants/${zhang.id}`, {
+  adminKey: ADMIN_KEY,
+  isCore: false,
+});
+
+head(14, '删除活动');
+
+// 用一个一次性的活动测删除，别动主测试对象
+const throwaway = await call('POST', '/api/events', {
+  title: '一次性活动',
+  rangeStart: RANGE_START,
+  rangeEnd: RANGE_END,
+  granularity: 'day',
+  collectDestinations: false,
+  budgetEnabled: false,
+  anonymity: 'open',
+});
+const delBad = await call('POST', `/api/events/${throwaway.data.eventId}/delete`, {
+  adminKey: 'wrong-key',
+});
+assert(delBad.status === 403, `删除需要管理密钥（实际 ${delBad.status}）`);
+
+const del = await call('POST', `/api/events/${throwaway.data.eventId}/delete`, {
+  adminKey: throwaway.data.adminKey,
+});
+assert(del.status === 200, `删除成功（实际 ${del.status}）`);
+const gone = await call('GET', `/api/events/${throwaway.data.eventId}`);
+assert(gone.status === 404, `删除后查不到了（实际 ${gone.status}）`);
+
+head(15, '朋友点开链接能打开（完整页面加载，不是前端路由）');
 
 // 这是最关键的一条：微信里点开链接 = 一次完整页面加载。
 // 任何把 /e/* 拦在 Worker 里却没实现路由的配置，都会让这里返回 JSON 404。
@@ -209,7 +326,7 @@ for (const path of [`/e/${EID}`, `/e/${EID}/fill`]) {
 const api404 = await call('GET', '/api/nope');
 assert(api404.status === 404, '不存在的 API 仍然正确返回 404 JSON');
 
-head(11, '凭证不泄露');
+head(16, '凭证不泄露');
 
 assert(!JSON.stringify(res.data).includes('adminKeyHash'), '结果接口里没有 adminKeyHash');
 assert(!JSON.stringify(after.data).includes(ADMIN_KEY), '活动详情里没有管理密钥明文');

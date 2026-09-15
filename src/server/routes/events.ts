@@ -44,7 +44,10 @@ eventsRoute.post('/api/events', async (c) => {
     granularity: body.granularity,
     collectDestinations: body.collectDestinations ?? true,
     budgetEnabled: body.budgetEnabled ?? false,
-    coreOnly: body.coreOnly ?? false,
+    // coreOnly 是早期设计留下的字段，现在已经不用了 ——
+    // 核心成员只看 participants[].isCore，不再需要单独开关。
+    // 列还留着（去掉要写迁移，收益不大），但永远存 false。
+    coreOnly: false,
     anonymity: body.anonymity ?? 'open',
     adminKeyHash: await hashKey(adminKey),
     finalizedPlan: null,

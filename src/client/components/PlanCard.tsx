@@ -46,7 +46,14 @@ export default function PlanCard({
         <span className="font-medium">
           {isChampion && <span className="mr-1.5">🏆</span>}
           {slotRangeLabel(rangeStart, plan.startSlot, plan.endSlot, granularity)}
-          <span className="ml-2 text-ink-600">· {plan.destinationName}</span>
+          <span className="ml-2 text-ink-600">
+            · {plan.destinationName}
+            {/* 行程长度必须单独写出来：窗口可能被合并过，
+                比行程长，「10月5日–10月7日 · 莫干山」容易被读成玩三天 */}
+            {plan.daysNeeded > 0 && (
+              <span className="text-ink-400"> {plan.daysNeeded} 天</span>
+            )}
+          </span>
         </span>
         <span
           className={

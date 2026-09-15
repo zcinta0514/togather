@@ -4,6 +4,7 @@ import { eventsRoute } from './routes/events';
 import { participantsRoute } from './routes/participants';
 import { destinationsRoute } from './routes/destinations';
 import { resultsRoute } from './routes/results';
+import { adminActionsRoute } from './routes/admin-actions';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -13,6 +14,7 @@ app.route('/', eventsRoute);
 app.route('/', participantsRoute);
 app.route('/', destinationsRoute);
 app.route('/', resultsRoute);
+app.route('/', adminActionsRoute);
 
 /**
  * 兜底路由。

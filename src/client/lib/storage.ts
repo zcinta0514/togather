@@ -36,6 +36,19 @@ export function addMyEvent(e: MyEvent) {
 }
 export const getMyEvents = () => read<MyEvent[]>(K_MY_EVENTS, []);
 
+/** 取出本机保存的某活动的管理密钥；不是本机发起的返回 null */
+export function getAdminKey(eventId: string): string | null {
+  return getMyEvents().find((e) => e.eventId === eventId)?.adminKey ?? null;
+}
+
+/** 移除本地记录（不是删除服务端活动） */
+export function forgetMyEvent(eventId: string) {
+  write(
+    K_MY_EVENTS,
+    getMyEvents().filter((e) => e.eventId !== eventId),
+  );
+}
+
 export interface Participation {
   token: string;
   participantId: string;

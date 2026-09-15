@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { api } from '../lib/api';
-import { getParticipation } from '../lib/storage';
+import { api, parseFinalizedPlan } from '../lib/api';
+import { getParticipation, getAdminKey } from '../lib/storage';
+import { slotRangeLabel } from '../../core/slots';
 import PlanCard from '../components/PlanCard';
 import Heatmap from '../components/Heatmap';
-import type { EventDetailResponse, ResultsResponse } from '../../shared/types';
+import type { EventDetailResponse, PlanDto, ResultsResponse } from '../../shared/types';
 
 /** 默认展示几个方案，其余的折叠。列表短才看得下去。 */
 const DEFAULT_VISIBLE_PLANS = 3;
@@ -15,9 +16,13 @@ export default function ResultsPage() {
   const [results, setResults] = useState<ResultsResponse | null>(null);
   const [expanded, setExpanded] = useState<number | null>(null);
   const [showAll, setShowAll] = useState(false);
+  const [showCore, setShowCore] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
+  const [busy, setBusy] = useState('');
+
+  const adminKey = getAdminKey(id);
 
   const load = useCallback(async () => {
     try {
@@ -50,14 +55,48 @@ export default function ResultsPage() {
     }
   }
 
+  async function handleFinalize(plan: PlanDto) {
+    if (!adminKey) return;
+    setBusy(`final-${plan.startSlot}`);
+    try {
+      await api.finalize(id, {
+        adminKey,
+        destinationId: plan.destinationId,
+        startSlot: plan.startSlot,
+      });
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '定案失败');
+    } finally {
+      setBusy('');
+    }
+  }
+
+  async function toggleCore(participantId: string, next: boolean) {
+    if (!adminKey) return;
+    setBusy(`core-${participantId}`);
+    try {
+      await api.setCore(id, participantId, { adminKey, isCore: next });
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '标记失败');
+    } finally {
+      setBusy('');
+    }
+  }
+
   if (loading) return <main className="p-6 text-ink-400">加载中…</main>;
   if (error && !detail) return <main className="p-6 text-red-600">{error}</main>;
   if (!detail || !results) return null;
 
   const participation = getParticipation(id);
+  const finalized = parseFinalizedPlan(detail.event.finalizedPlan);
   const progress = results.totalCount
     ? Math.round((results.respondedCount / results.totalCount) * 100)
     : 0;
+
+  const responded = detail.participants.filter((p) => p.respondedAt !== null);
+  const coreNames = responded.filter((p) => p.isCore).map((p) => p.name);
 
   const visible = showAll ? results.plans : results.plans.slice(0, DEFAULT_VISIBLE_PLANS);
   const hiddenCount = results.plans.length - visible.length;
@@ -67,37 +106,63 @@ export default function ResultsPage() {
       <header className="space-y-3">
         <h1 className="text-xl font-semibold">{detail.event.title}</h1>
 
-        <div className="rounded-[var(--radius-card)] border border-ink-200 bg-white p-4">
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-ink-600">
-              已填 {results.respondedCount} / {results.totalCount} 人
-            </span>
+        {finalized ? (
+          <Link
+            to={`/e/${id}/final`}
+            className="block rounded-[var(--radius-card)] border-2 border-brand-500 bg-brand-100/50 p-4 transition hover:bg-brand-100"
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-xs font-medium text-brand-700">✓ 已定案</div>
+                <div className="mt-1 font-medium">
+                  {slotRangeLabel(
+                    detail.event.rangeStart,
+                    finalized.startSlot,
+                    finalized.endSlot,
+                    detail.event.granularity,
+                  )}
+                  <span className="ml-2 text-ink-600">· {finalized.destinationName}</span>
+                </div>
+                <div className="mt-1 text-xs text-ink-400">
+                  {finalized.attendeeNames.length} 人 · 点开看通行卡
+                </div>
+              </div>
+              <span className="text-brand-600">→</span>
+            </div>
+          </Link>
+        ) : (
+          <div className="rounded-[var(--radius-card)] border border-ink-200 bg-white p-4">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-ink-600">
+                已填 {results.respondedCount} / {results.totalCount} 人
+              </span>
+              {results.notResponded.length > 0 && (
+                <button
+                  type="button"
+                  onClick={copyNudge}
+                  className="rounded-[var(--radius-btn)] border border-ink-200 px-3 py-1.5 text-xs transition hover:border-brand-500 hover:text-brand-600"
+                >
+                  {copied ? '已复制 ✓' : `催剩下 ${results.notResponded.length} 人`}
+                </button>
+              )}
+            </div>
+
+            <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-ink-100">
+              <div
+                className="h-full rounded-full bg-brand-500 transition-[width] duration-500"
+                style={{ width: `${progress}%` }}
+              />
+            </div>
+
             {results.notResponded.length > 0 && (
-              <button
-                type="button"
-                onClick={copyNudge}
-                className="rounded-[var(--radius-btn)] border border-ink-200 px-3 py-1.5 text-xs transition hover:border-brand-500 hover:text-brand-600"
-              >
-                {copied ? '已复制 ✓' : `催剩下 ${results.notResponded.length} 人`}
-              </button>
+              <p className="mt-2.5 text-xs text-ink-400">
+                还没填：{results.notResponded.map((p) => p.name).join('、')}
+              </p>
             )}
           </div>
+        )}
 
-          <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-ink-100">
-            <div
-              className="h-full rounded-full bg-brand-500 transition-[width] duration-500"
-              style={{ width: `${progress}%` }}
-            />
-          </div>
-
-          {results.notResponded.length > 0 && (
-            <p className="mt-2.5 text-xs text-ink-400">
-              还没填：{results.notResponded.map((p) => p.name).join('、')}
-            </p>
-          )}
-        </div>
-
-        {!participation && (
+        {!participation && !finalized && (
           <Link
             to={`/e/${id}/fill`}
             className="block rounded-[var(--radius-btn)] border border-brand-300 bg-brand-100/40 px-4 py-3 text-center text-sm text-brand-700"
@@ -107,8 +172,58 @@ export default function ResultsPage() {
         )}
       </header>
 
+      {/* 核心成员：只有发起人能改。
+          放在方案列表【上面】—— 改完立刻能看到下面的排序怎么变，
+          如果放在最底下，用户勾完之后还要往上翻才知道发生了什么。 */}
+      {adminKey && responded.length >= 2 && (
+        <section className="rounded-[var(--radius-card)] border border-ink-200 bg-white p-4">
+          <button
+            type="button"
+            onClick={() => setShowCore((v) => !v)}
+            className="flex w-full items-center justify-between text-left"
+          >
+            <span className="text-sm font-medium text-ink-600">
+              核心成员
+              {coreNames.length > 0 && (
+                <span className="ml-2 font-normal text-brand-600">已标 {coreNames.length} 人</span>
+              )}
+            </span>
+            <span className="text-xs text-ink-400">{showCore ? '收起 ▴' : '设置 ▾'}</span>
+          </button>
+
+          {showCore && (
+            <>
+              <p className="mt-3 text-xs leading-relaxed text-ink-400">
+                标出「这次必须有谁」。标上的人到不了的方案会沉到后面 ——
+                适合有那么一两个主心骨、缺了就不成局的场合。不标就等于没有核心。
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {responded.map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    disabled={busy === `core-${p.id}`}
+                    onClick={() => toggleCore(p.id, !p.isCore)}
+                    className={[
+                      'rounded-full border px-3.5 py-1.5 text-sm transition disabled:opacity-40',
+                      p.isCore
+                        ? 'border-brand-700 bg-brand-500 text-white'
+                        : 'border-ink-200 text-ink-600 hover:border-ink-400',
+                    ].join(' ')}
+                  >
+                    {p.name}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </section>
+      )}
+
       <section className="space-y-3">
-        <h2 className="text-sm font-medium text-ink-600">能执行的方案</h2>
+        <h2 className="text-sm font-medium text-ink-600">
+          {finalized ? '当时考虑过的方案' : '能执行的方案'}
+        </h2>
 
         {results.plans.length === 0 ? (
           <div className="rounded-[var(--radius-card)] border border-ink-200 bg-white p-6 text-center">
@@ -119,32 +234,56 @@ export default function ResultsPage() {
           </div>
         ) : (
           <>
-            {visible.map((plan, i) => (
-              <div key={`${plan.destinationId}-${plan.startSlot}`}>
-                <PlanCard
-                  plan={plan}
-                  rank={i}
-                  participants={detail.participants}
-                  rangeStart={detail.event.rangeStart}
-                  granularity={detail.event.granularity}
-                  anonymity={detail.event.anonymity}
-                  onExpand={() => setExpanded(expanded === i ? null : i)}
-                />
-                {expanded === i && (
-                  <div className="mt-2 rounded-[var(--radius-card)] border border-ink-200 bg-white p-4">
-                    <Heatmap
-                      participants={detail.participants}
-                      slotCount={results.slotCount}
-                      granularity={detail.event.granularity}
-                      rangeStart={detail.event.rangeStart}
-                      slotStarts={results.slotStarts}
-                    />
-                  </div>
-                )}
-              </div>
-            ))}
+            {visible.map((plan, i) => {
+              const isFinalized =
+                finalized?.destinationId === plan.destinationId &&
+                finalized.startSlot === plan.startSlot;
+              return (
+                <div key={`${plan.destinationId}-${plan.startSlot}`}>
+                  <PlanCard
+                    plan={plan}
+                    rank={i}
+                    participants={detail.participants}
+                    rangeStart={detail.event.rangeStart}
+                    granularity={detail.event.granularity}
+                    anonymity={detail.event.anonymity}
+                    onExpand={() => setExpanded(expanded === i ? null : i)}
+                  />
 
-            {/* 默认只显示前几个，其余折叠 —— 列表短才看得下去，但一个都没丢 */}
+                  {/* 定案按钮放在卡片【外面】—— 卡片本身是个 button，
+                      按钮不能嵌套按钮，那样 HTML 不合法、点击也会串。 */}
+                  {adminKey && !finalized && (
+                    <div className="mt-1.5 flex justify-end">
+                      <button
+                        type="button"
+                        disabled={busy === `final-${plan.startSlot}`}
+                        onClick={() => handleFinalize(plan)}
+                        className="rounded-[var(--radius-btn)] px-3 py-1.5 text-xs text-ink-400 transition hover:bg-brand-100 hover:text-brand-700 disabled:opacity-40"
+                      >
+                        {busy === `final-${plan.startSlot}` ? '定案中…' : '定这个 →'}
+                      </button>
+                    </div>
+                  )}
+
+                  {isFinalized && (
+                    <p className="mt-1.5 text-right text-xs text-brand-600">✓ 就是它</p>
+                  )}
+
+                  {expanded === i && (
+                    <div className="mt-2 rounded-[var(--radius-card)] border border-ink-200 bg-white p-4">
+                      <Heatmap
+                        participants={detail.participants}
+                        slotCount={results.slotCount}
+                        granularity={detail.event.granularity}
+                        rangeStart={detail.event.rangeStart}
+                        slotStarts={results.slotStarts}
+                      />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+
             {hiddenCount > 0 && (
               <button
                 type="button"
@@ -170,6 +309,17 @@ export default function ResultsPage() {
           </ul>
         </section>
       )}
+
+      {error && (
+        <p className="rounded-[var(--radius-btn)] bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
+      )}
+
+      <Link
+        to="/my"
+        className="block pt-2 text-center text-xs text-ink-400 transition hover:text-brand-600"
+      >
+        我发起的活动 →
+      </Link>
     </main>
   );
 }

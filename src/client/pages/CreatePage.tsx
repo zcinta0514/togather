@@ -14,7 +14,7 @@ const FIELD =
   'mt-1.5 w-full rounded-[var(--radius-btn)] border border-ink-200 px-3 py-2.5 text-base outline-none focus:border-brand-500';
 
 const toggles: Array<{
-  key: 'collectDestinations' | 'budgetEnabled' | 'coreOnly';
+  key: 'collectDestinations' | 'budgetEnabled';
   label: string;
   hint: string;
 }> = [
@@ -27,11 +27,6 @@ const toggles: Array<{
     key: 'budgetEnabled',
     label: '启用预算维度',
     hint: '每个目的地标个大致花销，避免「不是不想去，是太贵」',
-  },
-  {
-    key: 'coreOnly',
-    label: '核心成员模式',
-    hint: '标出「必须有谁」，核心到不齐的方案会降到后面',
   },
 ];
 
@@ -46,7 +41,6 @@ export default function CreatePage() {
   const [flags, setFlags] = useState({
     collectDestinations: true,
     budgetEnabled: false,
-    coreOnly: false,
   });
   const [anonymity, setAnonymity] = useState<Anonymity>('open');
   const [busy, setBusy] = useState(false);

@@ -19,7 +19,7 @@ export interface PlannerDestination {
 
 export interface PlannerInput {
   slotCount: number;
-  coreOnly: boolean;
+  /** 是否有核心成员，由 participants[].isCore 表达，不需要单独开关 */
   participants: PlannerParticipant[];
   destinations: PlannerDestination[];
 }
@@ -97,9 +97,14 @@ export function buildPlans(input: PlannerInput): PlanDto[] {
         });
       }
 
+      // 核心成员：只看【有没有人被标记】。
+      //
+      // 曾经还有一个 coreOnly 开关，要求「创建时勾选 + 结果页标记」两步都做才生效 ——
+      // 而发起人在创建活动时根本不知道会不会用到核心成员，等于埋了个死胡同。
+      // 现在只有一个概念：标了谁，谁就是核心；一个都没标，就等于没有核心。
       const cores = responded.filter((p) => p.isCore);
       const missingCores = cores.filter((c) => !attendeeSet.has(c.id));
-      const blocked = input.coreOnly && cores.length > 0 && missingCores.length > 0;
+      const blocked = cores.length > 0 && missingCores.length > 0;
 
       plans.push({
         destinationId: d.id,

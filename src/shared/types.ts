@@ -59,6 +59,48 @@ export interface VoteRow {
 }
 
 /**
+ * 定案 —— 存进 events.finalized_plan 的 JSON。
+ *
+ * 目的地名称和参加人姓名**冗余存一份快照**，不靠 ID 现查。
+ * 理由：定案是「拍板」，出行卡要稳定。如果之后有人改了答案、
+ * 或者目的地被删掉，已定案的卡片不该跟着变或显示不出来。
+ */
+export interface FinalizedPlan {
+  destinationId: string;
+  destinationName: string;
+  /** 时间窗口的起止（闭区间）。窗口可能比行程长 —— 见 daysNeeded */
+  startSlot: number;
+  endSlot: number;
+  /**
+   * 这趟实际要几天。
+   *
+   * 窗口和行程长度是两回事：莫干山要 2 天，但 10/5–10/7 三天里任意两天都能成行，
+   * 方案列表为了不刷屏会把这样的窗口合并成一段。
+   * 所以卡片必须把「多长的窗口」和「玩几天」分开说，
+   * 否则 2 天的行程会显示成 3 天。
+   */
+  daysNeeded: number;
+  attendeeIds: string[];
+  attendeeNames: string[];
+  finalizedAt: number;
+}
+
+export interface FinalizeRequest {
+  adminKey: string;
+  destinationId: string;
+  startSlot: number;
+}
+
+export interface UnfinalizeRequest {
+  adminKey: string;
+}
+
+export interface SetCoreRequest {
+  adminKey: string;
+  isCore: boolean;
+}
+
+/**
  * 对外暴露的参与者信息 —— 刻意不含 token。
  *
  * token 是认领身份的凭证，拿到它就能冒充别人提交。
@@ -81,7 +123,6 @@ export interface CreateEventRequest {
   granularity: Granularity;
   collectDestinations: boolean;
   budgetEnabled: boolean;
-  coreOnly: boolean;
   anonymity: Anonymity;
 }
 

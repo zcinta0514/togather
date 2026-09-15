@@ -29,7 +29,6 @@ resultsRoute.get('/api/events/:id/results', async (c) => {
 
   const plans = buildPlans({
     slotCount,
-    coreOnly: event.coreOnly,
     participants: participantRows.map((p) => ({
       id: p.id,
       name: p.name,

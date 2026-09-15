@@ -106,9 +106,9 @@ export default function FillPage() {
     }
   }
 
-  async function handleNominate(n: string, daysNeeded: number) {
+  async function handleNominate(n: string, daysNeeded: number, budgetLevel: number | null) {
     const token = await ensureJoined();
-    const created = await api.nominate(id, { token, name: n, daysNeeded, budgetLevel: null });
+    const created = await api.nominate(id, { token, name: n, daysNeeded, budgetLevel });
     const fresh = await api.getEvent(id);
     setDetail(fresh);
     // 自己提的名，默认就是「想去」

@@ -13,11 +13,9 @@ function makeInput(opts: {
   slotCount: number;
   people: Array<{ id: string; avail: string; core?: boolean; responded?: boolean }>;
   dests: Array<{ id: string; days: number; votes: Record<string, VoteLevel> }>;
-  coreOnly?: boolean;
 }) {
   return {
     slotCount: opts.slotCount,
-    coreOnly: opts.coreOnly ?? false,
     participants: opts.people.map((p) => ({
       id: p.id,
       name: p.id,
@@ -168,7 +166,6 @@ describe('buildPlans — 核心成员模式', () => {
   it('核心成员没全到的方案被标记为 blocked 并沉底', () => {
     const input = makeInput({
       slotCount: 4,
-      coreOnly: true,
       people: [
         { id: '核心A', avail: '2222', core: true },
         { id: '核心B', avail: '22..', core: true }, // 只有前两格有空
@@ -188,15 +185,15 @@ describe('buildPlans — 核心成员模式', () => {
     expect(blockedOnes[0].blockedReason).toContain('核心B');
   });
 
-  it('关闭核心模式时，同样的输入不会标 blocked', () => {
+  it('没人被标记为核心时，不会标 blocked —— 标记了才算数，没标记就没影响', () => {
     const input = makeInput({
       slotCount: 4,
       people: [
-        { id: '核心A', avail: '2222', core: true },
-        { id: '核心B', avail: '22..', core: true },
-        { id: '路人', avail: '2222' },
+        { id: 'a', avail: '2222' },
+        { id: 'b', avail: '22..' },
+        { id: 'c', avail: '2222' },
       ],
-      dests: [{ id: 'x', days: 2, votes: { 核心A: 2, 核心B: 2, 路人: 2 } }],
+      dests: [{ id: 'x', days: 2, votes: { a: 2, b: 2, c: 2 } }],
     });
     expect(buildPlans(input).every((p) => !p.blocked)).toBe(true);
   });
