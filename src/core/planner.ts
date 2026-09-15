@@ -118,7 +118,45 @@ export function buildPlans(input: PlannerInput): PlanDto[] {
     }
   }
 
-  return rankAndTrim(mergeAdjacent(plans));
+  return rankAndTrim(dropDominated(mergeAdjacent(plans)));
+}
+
+/**
+ * 砍掉「被支配」的方案。
+ *
+ * 方案 X 被方案 Y 支配，当且仅当同时满足：
+ *   1. 同一个目的地
+ *   2. 受阻状态相同（核心成员到没到）
+ *   3. X 的人全都包含在 Y 的人里，且 Y 人更多
+ *
+ * 为什么可以砍：能去 X 的人一定能去 Y，而 Y 人更多 ——
+ * X 没有提供任何 Y 没有的东西，留着只会占位置、干扰视线。
+ *
+ * 注意这个规则【不会】砍掉「另一个目的地的人少的方案」——
+ * 目的地不同就不构成支配。那种方案是取舍的体现，必须留着。
+ * （设计文档 §8.2 第 6 步：保证用户能看到「换个地方会怎样」）
+ */
+function dropDominated(plans: PlanDto[]): PlanDto[] {
+  const entries = plans.map((plan) => ({ plan, crowd: new Set(plan.attendeeIds) }));
+
+  const isSubset = (a: Set<string>, b: Set<string>) => {
+    for (const x of a) if (!b.has(x)) return false;
+    return true;
+  };
+
+  return entries
+    .filter(
+      (x) =>
+        !entries.some(
+          (y) =>
+            y.plan !== x.plan &&
+            y.plan.destinationId === x.plan.destinationId &&
+            y.plan.blocked === x.plan.blocked &&
+            y.crowd.size > x.crowd.size &&
+            isSubset(x.crowd, y.crowd),
+        ),
+    )
+    .map((e) => e.plan);
 }
 
 /**

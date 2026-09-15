@@ -219,26 +219,65 @@ describe('buildPlans — 排序', () => {
   });
 });
 
-describe('buildPlans — subset 视图（产品的差异化所在）', () => {
-  it('凑不齐全员时，仍给出「少谁也能成行」的方案', () => {
+describe('buildPlans — 砍掉被支配的方案', () => {
+  it('同目的地、人数更少、且能来的人完全被包含 → 不显示', () => {
+    // a、b、c 全程有空；d 只有后三天有空
+    // 莫干山(2天)：[4,5] 四人全到；[0,1] 等只有 a、b、c
+    // 后者的人全是前者的子集 → 被支配 → 砍掉
+    const input = makeInput({
+      slotCount: 7,
+      people: [
+        { id: 'a', avail: '2222222' },
+        { id: 'b', avail: '2222222' },
+        { id: 'c', avail: '2222222' },
+        { id: 'd', avail: '0000222' },
+      ],
+      dests: [{ id: '莫干山', days: 2, votes: { a: 2, b: 2, c: 2, d: 2 } }],
+    });
+    const plans = buildPlans(input);
+    expect(plans).toHaveLength(1);
+    expect(plans[0].attendeeIds).toHaveLength(4);
+  });
+
+  it('人群不是子集时不砍 —— 换人了就是不同的方案', () => {
+    // a 只有前两天有空、c 只有后两天有空 → {a,b,d} 和 {b,c,d} 互不包含
     const input = makeInput({
       slotCount: 4,
       people: [
-        { id: 'a', avail: '2222' },
+        { id: 'a', avail: '22..' },
         { id: 'b', avail: '2222' },
-        { id: 'c', avail: '..22' }, // 只有后两天有空
+        { id: 'c', avail: '..22' },
+        { id: 'd', avail: '2222' },
       ],
-      dests: [{ id: 'x', days: 2, votes: { a: 2, b: 2, c: 2 } }],
+      dests: [{ id: 'x', days: 2, votes: { a: 2, b: 2, c: 2, d: 2 } }],
     });
     const plans = buildPlans(input);
+    // {a,b,d} 和 {b,c,d} 都留；{b,d} 被两者支配 → 砍掉
+    expect(plans).toHaveLength(2);
+    expect(plans.every((p) => p.attendeeIds.length === 3)).toBe(true);
+  });
 
-    // [2,3] 是全员方案
-    expect(plans[0].attendeeIds).toHaveLength(3);
-
-    // [0,1] 只有 a、b 能到，但方案仍然存在（不是被整体丢弃）
-    const partial = plans.find((p) => p.startSlot === 0);
-    expect(partial).toBeDefined();
-    expect([...partial!.attendeeIds].sort()).toEqual(['a', 'b']);
-    expect(partial!.missing).toContainEqual({ participantId: 'c', name: 'c', reason: 'busy' });
+  it('目的地不同就不构成支配 —— 人少的那个必须留着', () => {
+    // §3.1 反例：莫干山 3 人方案被莫干山 4 人方案支配 → 砍
+    // 但云南 2 人方案是【另一个目的地】→ 必须留，它是取舍的体现
+    const input = makeInput({
+      slotCount: 7,
+      people: [
+        { id: '小王', avail: '2222222' },
+        { id: '小李', avail: '2222222' },
+        { id: '小张', avail: '....222' },
+        { id: '小赵', avail: '2222222' },
+      ],
+      dests: [
+        { id: '云南', days: 5, votes: { 小王: 2, 小李: 2, 小张: 0, 小赵: 0 } },
+        { id: '莫干山', days: 2, votes: { 小王: 1, 小李: 1, 小张: 2, 小赵: 2 } },
+      ],
+    });
+    const plans = buildPlans(input);
+    expect(plans).toHaveLength(2);
+    expect(plans[0].destinationName).toBe('莫干山');
+    expect(plans[0].attendeeIds).toHaveLength(4);
+    expect(plans[1].destinationName).toBe('云南');
+    expect(plans[1].attendeeIds).toHaveLength(2);
   });
 });

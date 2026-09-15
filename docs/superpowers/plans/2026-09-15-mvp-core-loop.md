@@ -1146,27 +1146,66 @@ describe('buildPlans — 排序', () => {
   });
 });
 
-describe('buildPlans — subset 视图（产品的差异化所在）', () => {
-  it('凑不齐全员时，仍给出「少谁也能成行」的方案', () => {
+describe('buildPlans — 砍掉被支配的方案', () => {
+  it('同目的地、人数更少、且能来的人完全被包含 → 不显示', () => {
+    // a、b、c 全程有空；d 只有后三天有空
+    // 莫干山(2天)：[4,5] 四人全到；[0,1] 等只有 a、b、c
+    // 后者的人全是前者的子集 → 被支配 → 砍掉
+    const input = makeInput({
+      slotCount: 7,
+      people: [
+        { id: 'a', avail: '2222222' },
+        { id: 'b', avail: '2222222' },
+        { id: 'c', avail: '2222222' },
+        { id: 'd', avail: '0000222' },
+      ],
+      dests: [{ id: '莫干山', days: 2, votes: { a: 2, b: 2, c: 2, d: 2 } }],
+    });
+    const plans = buildPlans(input);
+    expect(plans).toHaveLength(1);
+    expect(plans[0].attendeeIds).toHaveLength(4);
+  });
+
+  it('人群不是子集时不砍 —— 换人了就是不同的方案', () => {
+    // a 只有前两天有空、c 只有后两天有空 → {a,b,d} 和 {b,c,d} 互不包含
     const input = makeInput({
       slotCount: 4,
       people: [
-        { id: 'a', avail: '2222' },
+        { id: 'a', avail: '22..' },
         { id: 'b', avail: '2222' },
-        { id: 'c', avail: '..22' },   // 只有后两天有空
+        { id: 'c', avail: '..22' },
+        { id: 'd', avail: '2222' },
       ],
-      dests: [{ id: 'x', days: 2, votes: { a: 2, b: 2, c: 2 } }],
+      dests: [{ id: 'x', days: 2, votes: { a: 2, b: 2, c: 2, d: 2 } }],
     });
     const plans = buildPlans(input);
+    // {a,b,d} 和 {b,c,d} 都留；{b,d} 被两者支配 → 砍掉
+    expect(plans).toHaveLength(2);
+    expect(plans.every((p) => p.attendeeIds.length === 3)).toBe(true);
+  });
 
-    // [2,3] 是全员方案
-    expect(plans[0].attendeeIds).toHaveLength(3);
-
-    // [0,1] 只有 a、b 能到，但方案仍然存在（不是被整体丢弃）
-    const partial = plans.find((p) => p.startSlot === 0);
-    expect(partial).toBeDefined();
-    expect(partial!.attendeeIds.sort()).toEqual(['a', 'b']);
-    expect(partial!.missing).toContainEqual({ participantId: 'c', name: 'c', reason: 'busy' });
+  it('目的地不同就不构成支配 —— 人少的那个必须留着', () => {
+    // §3.1 反例：莫干山 3 人方案被莫干山 4 人方案支配 → 砍
+    // 但云南 2 人方案是【另一个目的地】→ 必须留，它是取舍的体现
+    const input = makeInput({
+      slotCount: 7,
+      people: [
+        { id: '小王', avail: '2222222' },
+        { id: '小李', avail: '2222222' },
+        { id: '小张', avail: '....222' },
+        { id: '小赵', avail: '2222222' },
+      ],
+      dests: [
+        { id: '云南', days: 5, votes: { 小王: 2, 小李: 2, 小张: 0, 小赵: 0 } },
+        { id: '莫干山', days: 2, votes: { 小王: 1, 小李: 1, 小张: 2, 小赵: 2 } },
+      ],
+    });
+    const plans = buildPlans(input);
+    expect(plans).toHaveLength(2);
+    expect(plans[0].destinationName).toBe('莫干山');
+    expect(plans[0].attendeeIds).toHaveLength(4);
+    expect(plans[1].destinationName).toBe('云南');
+    expect(plans[1].attendeeIds).toHaveLength(2);
   });
 });
 ```
@@ -1299,7 +1338,44 @@ export function buildPlans(input: PlannerInput): PlanDto[] {
     }
   }
 
-  return rankAndTrim(mergeAdjacent(plans));
+  return rankAndTrim(dropDominated(mergeAdjacent(plans)));
+}
+
+/**
+ * 砍掉「被支配」的方案。
+ *
+ * 方案 X 被方案 Y 支配，当且仅当同时满足：
+ *   1. 同一个目的地
+ *   2. 受阻状态相同（核心成员到没到）
+ *   3. X 的人全都包含在 Y 的人里，且 Y 人更多
+ *
+ * 为什么可以砍：能去 X 的人一定能去 Y，而 Y 人更多 ——
+ * X 没有提供任何 Y 没有的东西，留着只会占位置、干扰视线。
+ *
+ * 注意这个规则【不会】砍掉「另一个目的地的人少的方案」——
+ * 目的地不同就不构成支配。那种方案是取舍的体现，必须留着。
+ */
+function dropDominated(plans: PlanDto[]): PlanDto[] {
+  const entries = plans.map((plan) => ({ plan, crowd: new Set(plan.attendeeIds) }));
+
+  const isSubset = (a: Set<string>, b: Set<string>) => {
+    for (const x of a) if (!b.has(x)) return false;
+    return true;
+  };
+
+  return entries
+    .filter(
+      (x) =>
+        !entries.some(
+          (y) =>
+            y.plan !== x.plan &&
+            y.plan.destinationId === x.plan.destinationId &&
+            y.plan.blocked === x.plan.blocked &&
+            y.crowd.size > x.crowd.size &&
+            isSubset(x.crowd, y.crowd),
+        ),
+    )
+    .map((e) => e.plan);
 }
 
 /**
@@ -3380,11 +3456,15 @@ import PlanCard from '../components/PlanCard';
 import Heatmap from '../components/Heatmap';
 import type { EventDetailResponse, ResultsResponse } from '../../shared/types';
 
+/** 默认展示几个方案，其余的折叠。列表短才看得下去。 */
+const DEFAULT_VISIBLE_PLANS = 3;
+
 export default function ResultsPage() {
   const { id = '' } = useParams();
   const [detail, setDetail] = useState<EventDetailResponse | null>(null);
   const [results, setResults] = useState<ResultsResponse | null>(null);
   const [expanded, setExpanded] = useState<number | null>(null);
+  const [showAll, setShowAll] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
@@ -3470,28 +3550,45 @@ export default function ResultsPage() {
             </p>
           </div>
         ) : (
-          results.plans.map((plan, i) => (
-            <div key={`${plan.destinationId}-${plan.startSlot}`}>
-              <PlanCard
-                plan={plan} rank={i}
-                participants={detail.participants}
-                rangeStart={detail.event.rangeStart}
-                granularity={detail.event.granularity}
-                anonymity={detail.event.anonymity}
-                onExpand={() => setExpanded(expanded === i ? null : i)}
-              />
-              {expanded === i && (
-                <div className="mt-2 rounded-[var(--radius-card)] border border-ink-200 bg-white p-4">
-                  <Heatmap
+          <>
+            {(showAll ? results.plans : results.plans.slice(0, DEFAULT_VISIBLE_PLANS)).map(
+              (plan, i) => (
+                <div key={`${plan.destinationId}-${plan.startSlot}`}>
+                  <PlanCard
+                    plan={plan}
+                    rank={i}
                     participants={detail.participants}
-                    slotCount={results.slotCount}
-                    granularity={detail.event.granularity}
                     rangeStart={detail.event.rangeStart}
+                    granularity={detail.event.granularity}
+                    anonymity={detail.event.anonymity}
+                    onExpand={() => setExpanded(expanded === i ? null : i)}
                   />
+                  {expanded === i && (
+                    <div className="mt-2 rounded-[var(--radius-card)] border border-ink-200 bg-white p-4">
+                      <Heatmap
+                        participants={detail.participants}
+                        slotCount={results.slotCount}
+                        granularity={detail.event.granularity}
+                        rangeStart={detail.event.rangeStart}
+                      />
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
-          ))
+              ),
+            )}
+
+            {/* 默认只显示前几个，其余折叠 —— 列表短才看得下去，
+                但一个都没丢，想看随时展开 */}
+            {!showAll && results.plans.length > DEFAULT_VISIBLE_PLANS && (
+              <button
+                type="button"
+                onClick={() => setShowAll(true)}
+                className="w-full rounded-[var(--radius-card)] border border-dashed border-ink-400 py-3 text-sm text-ink-600 transition hover:border-brand-500 hover:text-brand-600"
+              >
+                还有 {results.plans.length - DEFAULT_VISIBLE_PLANS} 个方案 ▾
+              </button>
+            )}
+          </>
         )}
       </section>
 
