@@ -291,3 +291,48 @@ npm run smoke                                  # 端到端，含匿名那 8 条
 
 `check-grid.mjs` 里有一条是「无障碍标签的日期必须逐格递增」——
 跨月时月份取错会让序列掉头往下，用单调性抓它比肉眼找快得多。
+
+⚠️ **在 Git Bash 里传路由参数要加 `MSYS_NO_PATHCONV=1`**：
+
+```bash
+MSYS_NO_PATHCONV=1 node scripts/check-grid.mjs /e/xxxxxx/fill
+```
+
+不加的话 Git Bash 会把 `/e/xxxxxx/fill` 当成 Windows 路径转换掉
+（变成 `E:/...`），报「Cannot navigate to invalid URL」。踩过一次。
+
+---
+
+## 六、明天从这里接着做
+
+**下一步：第三节「预算改成具体金额」。**
+
+现状是「省一点 / 一般 / 舍得花」三档（`DestinationPicker.tsx` 的 `BUDGETS`，
+取值 1/2/3），只能展示、没法算。要改成每个人对每个目的地填一个整数金额。
+
+动手前记得先看一眼 `src/server/routes/destinations.ts` 里的
+`VALID_BUDGET_LEVELS` —— 那里现在按 1–3 校验，改成金额时**这个校验
+和数据库列的语义都要一起改**，文档注释里已经标出来了。
+
+### 用户还没定的两件事
+
+1. **冒烟测试会在线上留一个测试活动**（假名字假地名，不影响使用，但会留痕）。
+   跑完自动删掉、还是留着当样例，等用户拍板。
+   注意：主测试对象目前删不掉 —— 脚本没把 adminKey 打出来，跑完就拿不到了。
+   要自动清理的话，得让脚本自己拿着 key 去删。
+
+2. **落地页的截图会不会过时** —— 图片是 `public/shots/results.jpg`，
+   界面一改它就跟实际不符了。UI 定稿（第四节）之后需要重新截一张。
+   重截的命令：
+   ```bash
+   npm run dev
+   node scripts/shoot.mjs "http://localhost:5173/e/xxxxxx" \
+     --out=.shots/demo --height=580 --format=jpeg --quality=90
+   ```
+
+### 当前线上状态（收工时的快照）
+
+- 线上：https://heshihedi.pages.dev ，跑的是提交 `b0c8f63`
+- 本地构建哈希与线上一致（`index-D9PPnrPX.js`），确认过是真上去了
+- 工作区干净，没有未提交的改动
+- 开发服务器已停，5173 端口已释放
