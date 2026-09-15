@@ -103,13 +103,13 @@ export default function ResultsPage() {
 
   return (
     <main className="mx-auto max-w-2xl space-y-6 p-5 pb-16">
-      <header className="space-y-3">
+      <header className="rise-in space-y-3">
         <h1 className="text-xl font-semibold">{detail.event.title}</h1>
 
         {finalized ? (
           <Link
             to={`/e/${id}/final`}
-            className="block rounded-[var(--radius-card)] border-2 border-brand-500 bg-brand-100/50 p-4 transition hover:bg-brand-100"
+            className="glass glass-edge block rounded-[var(--radius-card)] border-brand-300 p-4 transition"
           >
             <div className="flex items-center justify-between">
               <div>
@@ -124,7 +124,7 @@ export default function ResultsPage() {
                   <span className="ml-2 text-ink-600">· {finalized.destinationName}</span>
                 </div>
                 <div className="mt-1 text-xs text-ink-400">
-                  {finalized.attendeeNames.length} 人 · 点开看通行卡
+                  {finalized.attendeeNames.length} 人 · 点开看出行卡
                 </div>
               </div>
               <span className="text-brand-600">→</span>
@@ -239,7 +239,11 @@ export default function ResultsPage() {
                 finalized?.destinationId === plan.destinationId &&
                 finalized.startSlot === plan.startSlot;
               return (
-                <div key={`${plan.destinationId}-${plan.startSlot}`}>
+                <div
+                  key={`${plan.destinationId}-${plan.startSlot}`}
+                  className="plan-in"
+                  style={{ animationDelay: `${Math.min(i * 70, 350)}ms` }}
+                >
                   <PlanCard
                     plan={plan}
                     rank={i}

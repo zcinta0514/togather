@@ -191,13 +191,13 @@ export default function CreatePage() {
         </p>
       )}
 
-      <div className="fixed inset-x-0 bottom-0 border-t border-ink-200 bg-white/95 p-4 backdrop-blur">
+      <div className="glass-bar fixed inset-x-0 bottom-0 p-4">
         <div className="mx-auto max-w-xl">
           <button
             type="button"
             onClick={submit}
             disabled={busy}
-            className="w-full rounded-[var(--radius-btn)] bg-brand-600 py-3.5 text-base font-medium text-white transition active:scale-[.99] disabled:opacity-40"
+            className="btn-solid w-full rounded-[var(--radius-btn)] py-3.5 text-base font-medium text-white disabled:opacity-40"
           >
             {busy ? '创建中…' : '创建并开始填'}
           </button>

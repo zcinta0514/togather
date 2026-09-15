@@ -134,7 +134,7 @@ export default function FinalPage() {
         <button
           type="button"
           onClick={() => copy('text', shareText)}
-          className="w-full rounded-[var(--radius-btn)] bg-brand-600 py-3.5 text-base font-medium text-white transition active:scale-[.99]"
+          className="btn-solid w-full rounded-[var(--radius-btn)] py-3.5 text-base font-medium text-white"
         >
           {copied === 'text' ? '已复制 ✓' : '复制到群里'}
         </button>
@@ -142,7 +142,7 @@ export default function FinalPage() {
         <button
           type="button"
           onClick={downloadIcs}
-          className="w-full rounded-[var(--radius-btn)] border border-ink-200 bg-white py-3.5 text-base transition hover:border-brand-500 hover:text-brand-600"
+          className="glass glass-edge w-full rounded-[var(--radius-btn)] py-3.5 text-base transition hover:text-brand-600"
         >
           加进手机日历
         </button>

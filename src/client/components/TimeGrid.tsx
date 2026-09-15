@@ -15,11 +15,16 @@ interface Props {
   counts?: number[];
 }
 
+// 「可以」和「勉强」用渐变 + 内高光做出微微凸起的果冻感（见 index.css）。
+// 「不行」保持扁平 —— 它是底色，不该有存在感。
 const LEVEL_CLASS: Record<AvailabilityLevel, string> = {
-  0: 'bg-ink-100 border-ink-200',
-  1: 'bg-warm-400 border-warm-600',
-  2: 'bg-brand-500 border-brand-700',
+  0: 'bg-ink-100 border-ink-200 cell-jelly',
+  1: 'cell-lv1 cell-jelly',
+  2: 'cell-lv2 cell-jelly',
 };
+
+/** 入场动画的错峰延迟。封顶 600ms —— 90 格的网格不能让最后一个等两秒 */
+const enterDelay = (i: number) => `${Math.min(i * 22, 600)}ms`;
 
 /** 北京时间下的「月/日」标签 */
 function dayLabel(ts: number): string {
@@ -129,7 +134,7 @@ export default function TimeGrid({
               <div
                 key={i}
                 title={`${label}：${Math.round(ratio * 100)}%`}
-                className="relative flex aspect-square items-center justify-center rounded-md"
+                className="cell-jelly relative flex aspect-square items-center justify-center rounded-md"
                 style={{
                   background:
                     ratio === 0
@@ -155,8 +160,9 @@ export default function TimeGrid({
               type="button"
               data-idx={i}
               aria-label={`${label} ${['不行', '勉强', '可以'][level]}`}
+              style={{ animationDelay: enterDelay(i) }}
               className={[
-                'relative aspect-square cursor-pointer rounded-md border transition',
+                'cell-enter relative aspect-square cursor-pointer rounded-md border transition',
                 LEVEL_CLASS[level],
               ].join(' ')}
             >

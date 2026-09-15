@@ -180,13 +180,13 @@ export default function FillPage() {
         <p className="rounded-[var(--radius-btn)] bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
       )}
 
-      <div className="fixed inset-x-0 bottom-0 border-t border-ink-200 bg-white/95 p-4 backdrop-blur">
+      <div className="glass-bar fixed inset-x-0 bottom-0 p-4">
         <div className="mx-auto max-w-2xl">
           <button
             type="button"
             onClick={handleSubmit}
             disabled={saving}
-            className="w-full rounded-[var(--radius-btn)] bg-brand-600 py-3.5 text-base font-medium text-white transition active:scale-[.99] disabled:opacity-40"
+            className="btn-solid w-full rounded-[var(--radius-btn)] py-3.5 text-base font-medium text-white disabled:opacity-40"
           >
             {saving ? '提交中…' : participation ? '更新我的时间' : '提交'}
           </button>

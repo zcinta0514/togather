@@ -318,6 +318,16 @@ assert(gone.status === 404, `删除后查不到了（实际 ${gone.status}）`);
 
 head(15, '分享卡片标签（微信里贴链接要显示活动名，不是一行光秃秃的网址）');
 
+// OG 注入只在 Pages 部署里生效：那边 _worker.js 负责所有请求。
+// 本地开发是 Vite 直接发静态文件，/e/* 根本到不了 Worker。
+// 与其让这几条假装通过，不如明确说"这里测不了"。
+const IS_LOCAL = BASE.includes('localhost') || BASE.includes('127.0.0.1');
+
+if (IS_LOCAL) {
+  console.log('  ⏭ 跳过 —— 本地测不了，OG 注入只在 Pages 部署里生效');
+  console.log('     要验证请跑：BASE=https://heshihedi.pages.dev npm run smoke');
+} else {
+
 const page = await fetch(`${BASE}/e/${EID}`).then((r) => r.text());
 const fillPage = await fetch(`${BASE}/e/${EID}/fill`).then((r) => r.text());
 const homePage = await fetch(`${BASE}/new`).then((r) => r.text());
@@ -366,6 +376,8 @@ assert(
 await call('POST', `/api/events/${weird.data.eventId}/delete`, {
   adminKey: weird.data.adminKey,
 });
+
+} // 非本地才跑 OG 断言
 
 head(16, '朋友点开链接能打开（完整页面加载，不是前端路由）');
 
