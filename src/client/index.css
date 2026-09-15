@@ -1,0 +1,43 @@
+@import 'tailwindcss';
+
+@theme {
+  /* 中性暖灰 —— 基底，占全页 90% 面积，不出声 */
+  --color-ink-50: #fbfaf9;
+  --color-ink-100: #f4f1ee;
+  --color-ink-200: #e7e2dd;
+  --color-ink-400: #a8a29e;
+  --color-ink-600: #57534e;
+  --color-ink-900: #1c1917;
+
+  /* 靛蓝 —— 主色，只在 CTA 和热力图上出现 */
+  --color-brand-100: #e0e7ff;
+  --color-brand-300: #a5b4fc;
+  --color-brand-500: #6366f1;
+  --color-brand-600: #4f46e5;
+  --color-brand-700: #4338ca;
+
+  /* 琥珀 —— 只做「勉强可以」这一档状态 */
+  --color-warm-400: #fbbf24;
+  --color-warm-600: #d97706;
+
+  --radius-card: 16px;
+  --radius-btn: 12px;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-ink-50);
+  color: var(--color-ink-900);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB',
+    'Microsoft YaHei', sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 移动优先：手机上任何横向溢出都是 bug */
+* {
+  box-sizing: border-box;
+}

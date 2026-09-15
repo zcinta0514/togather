@@ -1,5 +1,13 @@
-// D1 客户端。Task 7 会补上 schema 后这里会挂 drizzle。
+import { drizzle } from 'drizzle-orm/d1';
+import * as schema from './schema';
+
 export interface Env {
   DB: D1Database;
   ADMIN_SECRET: string;
 }
+
+export function getDb(env: Env) {
+  return drizzle(env.DB, { schema });
+}
+
+export type Db = ReturnType<typeof getDb>;

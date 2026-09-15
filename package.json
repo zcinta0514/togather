@@ -10,6 +10,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "demo": "tsx scripts/demo.ts",
+    "smoke": "node scripts/smoke.mjs",
     "typecheck": "tsc --noEmit",
     "db:migrate:local": "wrangler d1 migrations apply heshihedi --local",
     "deploy": "vite build && wrangler deploy"
