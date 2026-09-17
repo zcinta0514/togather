@@ -9,6 +9,10 @@ dist/
 # 本地环境变量（含密钥，绝不提交）
 .dev.vars
 .dev.vars.*
+# 但模板要留着 —— 换台电脑克隆下来得知道要配哪些变量。
+# 少了这条否定规则，README 里那句 `cp .dev.vars.example .dev.vars`
+# 会找不到源文件，而且失败得莫名其妙（明明文件就在本地目录里）。
+!.dev.vars.example
 *.local
 
 # 设计草稿与可视化伴侣产物
