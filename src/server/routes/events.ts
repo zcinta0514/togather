@@ -115,7 +115,7 @@ eventsRoute.get('/api/events/:id', async (c) => {
   // 看到谁投了「不想去」。而「不想去」正是它唯一要保护的东西。
   // 现在服务端直接不发：没有 token，或者 token 不是这个活动的人，就只拿到空的。
   if (event.anonymity === 'vote_anonymous') {
-    const token = c.req.query('token');
+    const token = c.req.header('X-Participant-Token');
     const mine = token ? participantRows.find((p) => p.token === token) : undefined;
     scopedVotes = mine ? scopedVotes.filter((v) => v.participantId === mine.id) : [];
   }

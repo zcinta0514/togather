@@ -17,6 +17,7 @@ export default function FillPage() {
   const [name, setNameState] = useState(getName() || search.get('name') || '');
   const [availability, setAvailability] = useState<AvailabilityLevel[]>([]);
   const [votes, setVotes] = useState<Record<string, VoteLevel>>({});
+  const [budgetAmounts, setBudgetAmounts] = useState<Record<string, number | null>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -49,6 +50,13 @@ export default function FillPage() {
             d.votes.filter((v) => v.participantId === me.participantId).map((v) => [v.destinationId, v.level]),
           ) as Record<string, VoteLevel>;
           setVotes(myVotes);
+          setBudgetAmounts(
+            Object.fromEntries(
+              d.votes
+                .filter((v) => v.participantId === me.participantId)
+                .map((v) => [v.destinationId, v.budgetAmount ?? null]),
+            ),
+          );
         }
       } catch (e) {
         if (alive) setError(e instanceof Error ? e.message : '加载失败');
@@ -97,7 +105,11 @@ export default function FillPage() {
         token,
         name: name.trim(),
         availability,
-        votes: Object.entries(votes).map(([destinationId, level]) => ({ destinationId, level })),
+        votes: Object.entries(votes).map(([destinationId, level]) => ({
+          destinationId,
+          level,
+          budgetAmount: budgetAmounts[destinationId] ?? null,
+        })),
       });
       setDone(true);
       setTimeout(() => navigate(`/e/${id}`), 900);
@@ -168,10 +180,24 @@ export default function FillPage() {
       {detail.event.collectDestinations && (
         <section>
           <h2 className="mb-3 text-sm font-medium text-ink-600">想去哪儿</h2>
+          {detail.event.budgetEnabled && (
+            <p className="mb-3 rounded-[var(--radius-btn)] bg-brand-100/50 px-3 py-2 text-xs leading-relaxed text-brand-700">
+              填了预算但还没选态度时，会先按“都行”记录；如果你不想去，请再点上面的态度按钮修改。
+            </p>
+          )}
           <DestinationPicker
             destinations={detail.destinations}
             votes={votes}
+            budgetAmounts={budgetAmounts}
             onVote={(did, lv) => setVotes((v) => ({ ...v, [did]: lv }))}
+            onBudgetAmount={(did, amount) => {
+              setBudgetAmounts((v) => ({ ...v, [did]: amount }));
+              // 填预算代表至少接受这个目的地；没选态度时默认「都行」，
+              // 否则提交只会带投票项，刚填的预算会被悄悄丢掉。
+              if (amount !== null) {
+                setVotes((v) => (v[did] === undefined ? { ...v, [did]: 1 } : v));
+              }
+            }}
             onNominate={handleNominate}
             budgetEnabled={detail.event.budgetEnabled}
           />

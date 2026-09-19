@@ -105,7 +105,7 @@ export default function TimeGrid({
     // 用坐标命中测试而不是 pointerenter：
     // 容器 setPointerCapture 之后所有指针事件都归容器，单个格子的 pointerenter 不会触发
     const el = document.elementFromPoint(clientX, clientY) as HTMLElement | null;
-    const raw = el?.dataset?.idx;
+    const raw = el?.closest<HTMLElement>('[data-idx]')?.dataset?.idx;
     if (raw === undefined) return;
     setCell(Number(raw), dragValue.current);
   };
@@ -124,7 +124,7 @@ export default function TimeGrid({
         } catch {
           /* 退化成普通拖拽：指针在容器内时依然能连涂 */
         }
-        const idx = (e.target as HTMLElement).dataset?.idx;
+        const idx = (e.target as HTMLElement).closest<HTMLElement>('[data-idx]')?.dataset?.idx;
         if (idx === undefined) return;
         dragging.current = true;
         dragValue.current = nextLevel(valueRef.current[Number(idx)] ?? 0);
@@ -229,15 +229,8 @@ export default function TimeGrid({
                         type="button"
                         data-idx={i}
                         aria-label={`${month}月${day}日${period} ${['不行', '勉强', '可以'][level]}`}
-                        style={{ animationDelay: enterDelay(i) }}
-                        className={[
-                          'cell-enter relative aspect-square min-h-8 cursor-pointer rounded-md border transition',
-                          LEVEL_CLASS[level],
-                        ].join(' ')}
-                        // 整个网格的输入都挂在容器的 pointer 事件上，所以格子
-                        // 虽然是个 <button>、也能被 Tab 聚焦，敲回车却什么都不会发生 ——
-                        // 只用键盘的人根本填不了这张表。
-                        //
+                        className="flex min-h-11 w-full items-center justify-center rounded-md border border-transparent bg-transparent p-0"
+                        // 视觉方块保持紧凑，按钮本身扩到约 44px 高，降低手机误触成本。
                         // 键盘触发的 click 和鼠标点击靠 detail 区分：键盘的 detail 是 0，
                         // 鼠标的 ≥ 1。鼠标那次已经由容器的 pointerdown 处理过了，
                         // 这里再切一次只会把结果抵消回原样。
@@ -245,7 +238,17 @@ export default function TimeGrid({
                           if (e.detail !== 0) return;
                           setCell(i, nextLevel(valueRef.current[i] ?? 0));
                         }}
-                      />
+                      >
+                        <span
+                          data-idx={i}
+                          aria-hidden="true"
+                          style={{ animationDelay: enterDelay(i) }}
+                          className={[
+                            'cell-enter relative h-8 w-8 cursor-pointer rounded-md border transition',
+                            LEVEL_CLASS[level],
+                          ].join(' ')}
+                        />
+                      </button>
                     );
                   })}
                   {filler(DAYS_PER_ROW - days.length)}

@@ -56,6 +56,19 @@ export interface VoteRow {
   participantId: string;
   destinationId: string;
   level: VoteLevel;
+  /** 这个人对该目的地「最多愿意为这趟花多少」（人民币元），选填。 */
+  budgetAmount: number | null;
+}
+
+/** 一个目的地的预算意愿统计（只统计已回应参与者提交的金额）。 */
+export interface BudgetStats {
+  median: number;
+  average: number;
+  min: number;
+  max: number;
+  filledCount: number;
+  totalCount: number;
+  sampleSmall: boolean;
 }
 
 /**
@@ -161,7 +174,7 @@ export interface SubmitRequest {
   token: string;
   name: string;
   availability: AvailabilityLevel[]; // 长度必须 === slotCount
-  votes: Array<{ destinationId: string; level: VoteLevel }>;
+  votes: Array<{ destinationId: string; level: VoteLevel; budgetAmount?: number | null }>;
 }
 
 export interface NominateDestinationRequest {
@@ -191,6 +204,8 @@ export interface PlanDto {
   unwillingCount: number;
   blocked: boolean;
   blockedReason?: string;
+  /** 该目的地的预算意愿统计；未启用预算或没有任何金额时为 null。 */
+  budgetStats: BudgetStats | null;
 }
 
 export interface ResultsResponse {
@@ -205,6 +220,14 @@ export interface ResultsResponse {
   unreachable: Array<{ destinationId: string; name: string; reason: string }>;
 }
 
+/** 结果页一次加载所需的活动详情与计算结果。投票明细不返回，结果页不需要它。 */
+export type ResultsPageDetail = Omit<EventDetailResponse, 'votes'>;
+
+export interface ResultsPageResponse {
+  detail: ResultsPageDetail;
+  results: ResultsResponse;
+}
+
 // ---------- 常量 ----------
 
 export const GRANULARITY_SECONDS: Record<Granularity, number> = {
@@ -214,3 +237,11 @@ export const GRANULARITY_SECONDS: Record<Granularity, number> = {
 
 /** 单个活动的槽位上限，防止有人建个 10 年的活动把服务器算爆 */
 export const MAX_SLOTS = 180;
+
+/**
+ * 单人、单目的地可填写的预算上限（人民币元）。
+ *
+ * 这不是产品建议价，只是输入防护：避免异常大数污染平均值，
+ * 同时保证最多 200 人参与时求和仍远低于 JS 安全整数上限。
+ */
+export const MAX_BUDGET_AMOUNT = 100_000_000;

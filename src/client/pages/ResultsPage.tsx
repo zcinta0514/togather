@@ -5,14 +5,14 @@ import { getParticipation, getAdminKey } from '../lib/storage';
 import { slotRangeLabel } from '../../core/slots';
 import PlanCard from '../components/PlanCard';
 import Heatmap from '../components/Heatmap';
-import type { EventDetailResponse, PlanDto, ResultsResponse } from '../../shared/types';
+import type { PlanDto, ResultsPageDetail, ResultsResponse } from '../../shared/types';
 
 /** 默认展示几个方案，其余的折叠。列表短才看得下去。 */
 const DEFAULT_VISIBLE_PLANS = 3;
 
 export default function ResultsPage() {
   const { id = '' } = useParams();
-  const [detail, setDetail] = useState<EventDetailResponse | null>(null);
+  const [detail, setDetail] = useState<ResultsPageDetail | null>(null);
   const [results, setResults] = useState<ResultsResponse | null>(null);
   const [expanded, setExpanded] = useState<number | null>(null);
   const [showAll, setShowAll] = useState(false);
@@ -25,11 +25,14 @@ export default function ResultsPage() {
   const adminKey = getAdminKey(id);
 
   const load = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    setDetail(null);
+    setResults(null);
     try {
-      const [d, r] = await Promise.all([api.getEvent(id), api.results(id)]);
-      setDetail(d);
-      setResults(r);
-      setError('');
+      const page = await api.resultsPage(id);
+      setDetail(page.detail);
+      setResults(page.results);
     } catch (e) {
       setError(e instanceof Error ? e.message : '加载失败');
     } finally {
@@ -89,8 +92,23 @@ export default function ResultsPage() {
   }
 
   if (loading) return <main className="p-6 text-ink-400">加载中…</main>;
-  if (error && !detail) return <main className="p-6 text-red-600">{error}</main>;
-  if (!detail || !results) return null;
+  if (!detail || !results) {
+    return (
+      <main className="mx-auto max-w-2xl space-y-4 p-5">
+        {detail && <h1 className="text-xl font-semibold">{detail.event.title}</h1>}
+        <div className="rounded-[var(--radius-card)] border border-red-200 bg-red-50 p-5">
+          <p className="text-sm text-red-700">{error || '结果暂时加载失败'}</p>
+          <button
+            type="button"
+            onClick={load}
+            className="mt-3 rounded-[var(--radius-btn)] border border-red-300 bg-white px-3 py-1.5 text-sm text-red-700 transition hover:border-red-500"
+          >
+            重试
+          </button>
+        </div>
+      </main>
+    );
+  }
 
   const participation = getParticipation(id);
   const finalized = parseFinalizedPlan(detail.event.finalizedPlan);
@@ -275,11 +293,12 @@ export default function ResultsPage() {
                     rangeStart={detail.event.rangeStart}
                     granularity={detail.event.granularity}
                     anonymity={detail.event.anonymity}
+                    expanded={expanded === i}
+                    detailsId={`plan-details-${i}`}
                     onExpand={() => setExpanded(expanded === i ? null : i)}
                   />
 
-                  {/* 定案按钮放在卡片【外面】—— 卡片本身是个 button，
-                      按钮不能嵌套按钮，那样 HTML 不合法、点击也会串。 */}
+                  {/* 定案按钮放在卡片外面，和查看热力图保持两个独立操作。 */}
                   {adminKey && !finalized && (
                     <div className="mt-1.5 flex justify-end">
                       <button
@@ -299,8 +318,12 @@ export default function ResultsPage() {
                     <p className="mt-1.5 text-right text-xs text-brand-600">✓ 就是它</p>
                   )}
 
-                  {expanded === i && (
-                    <div className="mt-2 rounded-[var(--radius-card)] border border-ink-200 bg-white p-4">
+                  <div
+                    id={`plan-details-${i}`}
+                    hidden={expanded !== i}
+                    className="mt-2 rounded-[var(--radius-card)] border border-ink-200 bg-white p-4"
+                  >
+                    {expanded === i && (
                       <Heatmap
                         participants={detail.participants}
                         slotCount={results.slotCount}
@@ -308,8 +331,8 @@ export default function ResultsPage() {
                         rangeStart={detail.event.rangeStart}
                         slotStarts={results.slotStarts}
                       />
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
               );
             })}

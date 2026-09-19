@@ -7,6 +7,7 @@ import type {
   JoinResponse,
   NominateDestinationRequest,
   ResultsResponse,
+  ResultsPageResponse,
   SetCoreRequest,
   SubmitRequest,
   UnfinalizeRequest,
@@ -39,12 +40,13 @@ export const api = {
    * 读活动全貌。
    *
    * 意愿匿名的活动必须带上自己的 token —— 服务端只回传你自己的票。
-   * 不带也能打开页面，只是看不到自己之前投过什么。
+   * 不带也能打开页面，只是看不到自己之前投过什么。token 放请求头，
+   * 避免出现在浏览器历史、访问日志和 Referer 里。
    */
   getEvent: (id: string, token?: string) =>
-    req<EventDetailResponse>(
-      `/api/events/${id}${token ? `?token=${encodeURIComponent(token)}` : ''}`,
-    ),
+    req<EventDetailResponse>(`/api/events/${id}`, {
+      headers: token ? { 'X-Participant-Token': token } : undefined,
+    }),
 
   join: (id: string, name: string, token?: string) =>
     req<JoinResponse>(`/api/events/${id}/join`, {
@@ -65,6 +67,9 @@ export const api = {
     ),
 
   results: (id: string) => req<ResultsResponse>(`/api/events/${id}/results`),
+
+  resultsPage: (id: string) =>
+    req<ResultsPageResponse>(`/api/events/${id}/results?view=page`),
 
   finalize: (id: string, body: FinalizeRequest) =>
     req<{ ok: true; plan: FinalizedPlan }>(`/api/events/${id}/finalize`, {

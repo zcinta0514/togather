@@ -46,6 +46,25 @@ const VOTE_LABEL: Record<VoteLevel, string> = { 2: '想去', 1: '都行', 0: '�
 const line = (c = '─') => c.repeat(66);
 const h = (s: string) => `\n${s}\n${line()}`;
 
+function assertFinitePlanNumbers(
+  plans: ReturnType<typeof buildPlans>,
+): asserts plans is ReturnType<typeof buildPlans> {
+  for (const [index, plan] of plans.entries()) {
+    const values = {
+      daysNeeded: plan.daysNeeded,
+      startSlot: plan.startSlot,
+      endSlot: plan.endSlot,
+      weakCount: plan.weakCount,
+    };
+
+    for (const [field, value] of Object.entries(values)) {
+      if (!Number.isFinite(value)) {
+        throw new Error(`方案 ${index + 1} 的 ${field} 不是有限数：${String(value)}`);
+      }
+    }
+  }
+}
+
 // ---------- 场景 ----------
 
 console.log(h('场景'));
@@ -95,7 +114,7 @@ console.log(h('② 交叉算 —— 本产品的算法'));
 
 const plans = buildPlans({
   slotCount: SLOTS,
-  coreOnly: false,
+  slotsPerDay: 1,
   participants: PEOPLE.map((p) => ({
     id: p.id,
     name: p.id,
@@ -114,6 +133,8 @@ const plans = buildPlans({
     >,
   })),
 });
+
+assertFinitePlanNumbers(plans);
 
 console.log(`算出来 ${plans.length} 个方案：\n`);
 

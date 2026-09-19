@@ -9,6 +9,8 @@ interface Props {
   rangeStart: number;
   granularity: Granularity;
   anonymity: Anonymity;
+  expanded: boolean;
+  detailsId: string;
   onExpand: () => void;
 }
 
@@ -19,6 +21,8 @@ export default function PlanCard({
   rangeStart,
   granularity,
   anonymity,
+  expanded,
+  detailsId,
   onExpand,
 }: Props) {
   const nameOf = useMemo(() => {
@@ -33,16 +37,16 @@ export default function PlanCard({
   // 数量只能看 unwillingCount。界面不显示但数据还在的话，这个设置就是摆设。
   const unwillingCount =
     anonymity === 'vote_anonymous' ? plan.unwillingCount : unwilling.length;
+  const budget = plan.budgetStats;
+  const money = (amount: number) => `¥${Math.round(amount).toLocaleString('zh-CN')}`;
 
   return (
-    <button
-      type="button"
-      onClick={onExpand}
+    <article
       className={[
-        'block w-full rounded-[var(--radius-card)] border p-4 text-left transition',
+        'rounded-[var(--radius-card)] border p-4 transition',
         isChampion
           ? 'border-brand-500 bg-brand-100/50 ring-1 ring-brand-500'
-          : 'border-ink-200 bg-white hover:border-ink-400',
+          : 'border-ink-200 bg-white',
         plan.blocked ? 'opacity-60' : '',
       ].join(' ')}
     >
@@ -94,6 +98,32 @@ export default function PlanCard({
       {plan.weakCount > 0 && (
         <p className="mt-1 text-[11px] text-ink-400">其中 {plan.weakCount} 格是「勉强」</p>
       )}
-    </button>
+
+      {budget && budget.filledCount > 0 && (
+        <details className="mt-2 text-xs">
+          <summary className="cursor-pointer list-none text-ink-500 marker:hidden">
+            预算上限约{' '}
+            <span className="font-medium text-ink-700">{money(budget.median)}</span>
+            <span className="text-ink-400">（中位数） · {budget.filledCount}/{budget.totalCount} 人填了</span>
+          </summary>
+          <div className="mt-1 pl-1 text-[11px] text-ink-400">
+            平均 {money(budget.average)} · 范围 {money(budget.min)}–{money(budget.max)}
+            {budget.sampleSmall && (
+              <p className="mt-0.5 text-warm-600">样本太少，参考意义有限</p>
+            )}
+          </div>
+        </details>
+      )}
+
+      <button
+        type="button"
+        onClick={onExpand}
+        aria-expanded={expanded}
+        aria-controls={detailsId}
+        className="mt-3 rounded-[var(--radius-btn)] px-2 py-1 text-xs text-ink-400 transition hover:bg-brand-100 hover:text-brand-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500"
+      >
+        {expanded ? '收起大家的时间 ▴' : '查看大家的时间 ▾'}
+      </button>
+    </article>
   );
 }

@@ -1,26 +1,15 @@
 import { useState } from 'react';
-import type { DestinationRow, VoteLevel } from '../../shared/types';
+import { MAX_BUDGET_AMOUNT, type DestinationRow, type VoteLevel } from '../../shared/types';
 
 const LABELS: Record<VoteLevel, string> = { 2: '想去', 1: '都行', 0: '不想去' };
 const ORDER: VoteLevel[] = [2, 1, 0];
 
-/**
- * 预算档位。
- *
- * 刻意用「相对」的说法而不是具体金额 —— 同一个地方不同季节差价很大，
- * 让系统猜数字只会猜错。这里要表达的是「这趟大概什么消费感觉」，
- * 目的是让「不是不想去，是太贵」这句话能说出口。
- */
-const BUDGETS: Array<{ level: number; label: string; hint: string }> = [
-  { level: 1, label: '省一点', hint: '能省则省' },
-  { level: 2, label: '一般', hint: '正常花销' },
-  { level: 3, label: '舍得花', hint: '愿意多掏点' },
-];
-
 interface Props {
   destinations: DestinationRow[];
   votes: Record<string, VoteLevel>;
+  budgetAmounts: Record<string, number | null>;
   onVote: (destinationId: string, level: VoteLevel) => void;
+  onBudgetAmount: (destinationId: string, amount: number | null) => void;
   onNominate: (name: string, daysNeeded: number, budgetLevel: number | null) => Promise<void>;
   budgetEnabled: boolean;
 }
@@ -28,14 +17,15 @@ interface Props {
 export default function DestinationPicker({
   destinations,
   votes,
+  budgetAmounts,
   onVote,
+  onBudgetAmount,
   onNominate,
   budgetEnabled,
 }: Props) {
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState('');
   const [days, setDays] = useState(2);
-  const [budget, setBudget] = useState(2);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
 
@@ -44,10 +34,10 @@ export default function DestinationPicker({
     setBusy(true);
     setErr('');
     try {
-      await onNominate(name.trim(), days, budgetEnabled ? budget : null);
+      // 旧的目的地级预算档位已停用；预算改为每个人逐个目的地填写金额。
+      await onNominate(name.trim(), days, null);
       setName('');
       setDays(2);
-      setBudget(2);
       setAdding(false);
     } catch (e) {
       setErr(e instanceof Error ? e.message : '提名失败');
@@ -70,9 +60,6 @@ export default function DestinationPicker({
               <span className="font-medium">{d.name}</span>
               <span className="shrink-0 text-xs text-ink-400">
                 需要 {d.daysNeeded} 天
-                {budgetEnabled && d.budgetLevel
-                  ? ` · ${BUDGETS.find((b) => b.level === d.budgetLevel)?.label ?? '预算未标'}`
-                  : ''}
               </span>
             </div>
             <div className="flex gap-2">
@@ -96,6 +83,40 @@ export default function DestinationPicker({
                 </button>
               ))}
             </div>
+            {budgetEnabled && (
+              <label className="mt-3 block text-xs text-ink-600">
+                <span className="mb-1 block">你最多愿意为这趟花多少？（元，选填）</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-ink-400">¥</span>
+                  <input
+                    type="number"
+                    min={0}
+                    max={MAX_BUDGET_AMOUNT}
+                    step={1}
+                    inputMode="numeric"
+                    value={budgetAmounts[d.id] ?? ''}
+                    onChange={(e) => {
+                      const raw = e.target.value;
+                      if (raw === '') {
+                        onBudgetAmount(d.id, null);
+                        return;
+                      }
+                      const amount = Number(raw);
+                      if (
+                        Number.isInteger(amount) &&
+                        amount >= 0 &&
+                        amount <= MAX_BUDGET_AMOUNT
+                      ) {
+                        onBudgetAmount(d.id, amount);
+                      }
+                    }}
+                    placeholder="例如 2000"
+                    className="w-36 rounded-[var(--radius-btn)] border border-ink-200 px-3 py-1.5 text-sm outline-none focus:border-brand-500"
+                  />
+                </div>
+                <span className="mt-1 block text-[11px] text-ink-400">问的是你的预算上限，不是这趟的实际价格</span>
+              </label>
+            )}
           </div>
         );
       })}
@@ -121,29 +142,6 @@ export default function DestinationPicker({
             />
           </label>
 
-          {budgetEnabled && (
-            <div className="mb-3">
-              <div className="mb-1.5 text-xs text-ink-600">这趟大概什么消费感觉</div>
-              <div className="flex gap-1.5">
-                {BUDGETS.map((b) => (
-                  <button
-                    key={b.level}
-                    type="button"
-                    onClick={() => setBudget(b.level)}
-                    title={b.hint}
-                    className={[
-                      'flex-1 rounded-[var(--radius-btn)] border px-2 py-1.5 text-xs transition',
-                      budget === b.level
-                        ? 'border-brand-700 bg-brand-500 text-white'
-                        : 'border-ink-200 text-ink-600 hover:border-ink-400',
-                    ].join(' ')}
-                  >
-                    {b.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
           {err && <p className="mb-2 text-xs text-red-600">{err}</p>}
           <div className="flex gap-2">
             <button

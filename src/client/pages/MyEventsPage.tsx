@@ -22,11 +22,9 @@ export default function MyEventsPage() {
       forgetMyEvent(e.eventId);
       setEvents(getMyEvents());
     } catch (err) {
-      // 服务端删失败（比如活动已经不在了）也把本地记录清掉，
-      // 否则这条会永远卡在列表里点不动
+      // 网络失败或权限失败时保留管理密钥；否则用户只是暂时离线，
+      // 本地记录却会被不可逆地清掉。
       setError(err instanceof Error ? err.message : '删除失败');
-      forgetMyEvent(e.eventId);
-      setEvents(getMyEvents());
     } finally {
       setBusy('');
     }

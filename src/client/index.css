@@ -37,6 +37,22 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* 键盘焦点必须在所有页面、所有控件上可见；不要只依赖浏览器默认样式。 */
+:where(a, button, input, select, textarea):focus-visible {
+  outline: 3px solid var(--color-brand-500);
+  outline-offset: 3px;
+}
+
+:where(input, select, textarea):focus-visible {
+  border-color: var(--color-brand-600);
+}
+
+@media (forced-colors: active) {
+  :where(a, button, input, select, textarea):focus-visible {
+    outline: 2px solid CanvasText;
+  }
+}
+
 /* 移动优先：手机上任何横向溢出都是 bug */
 * {
   box-sizing: border-box;

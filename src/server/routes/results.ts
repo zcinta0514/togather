@@ -5,7 +5,8 @@ import { getDb, type Env } from '../db';
 import { slotCountFor, allSlotStarts, slotsPerDay, slotsForDays } from '../../core/slots';
 import { decodeAvailability } from '../../core/bitmap';
 import { buildPlans, type PlannerDestination } from '../../core/planner';
-import type { ResultsResponse, VoteLevel } from '../../shared/types';
+import { calculateBudgetStats, protectBudgetStats } from '../../core/budget';
+import type { ResultsPageResponse, ResultsResponse, VoteLevel } from '../../shared/types';
 
 export const resultsRoute = new Hono<{ Bindings: Env }>();
 
@@ -28,9 +29,19 @@ resultsRoute.get('/api/events/:id/results', async (c) => {
   const scopedVotes = destIds.length
     ? await db.select().from(votes).where(inArray(votes.destinationId, destIds))
     : [];
+  const votesByDestination = new Map<string, typeof scopedVotes>();
+  for (const vote of scopedVotes) {
+    const list = votesByDestination.get(vote.destinationId);
+    if (list) list.push(vote);
+    else votesByDestination.set(vote.destinationId, [vote]);
+  }
 
   const slotCount = slotCountFor(event.rangeStart, event.rangeEnd, event.granularity);
   const perDay = slotsPerDay(event.granularity);
+  const respondedIds = new Set(
+    participantRows.filter((p) => p.respondedAt !== null).map((p) => p.id),
+  );
+  const respondedCount = respondedIds.size;
 
   const plans = buildPlans({
     slotCount,
@@ -48,14 +59,21 @@ resultsRoute.get('/api/events/:id/results', async (c) => {
       daysNeeded: d.daysNeeded,
       budgetLevel: d.budgetLevel,
       votes: Object.fromEntries(
-        scopedVotes
-          .filter((v) => v.destinationId === d.id)
-          .map((v) => [v.participantId, v.level as VoteLevel]),
+        (votesByDestination.get(d.id) ?? []).map((v) => [v.participantId, v.level as VoteLevel]),
       ),
+      budgetStats: event.budgetEnabled
+        ? protectBudgetStats(
+            calculateBudgetStats(
+              (votesByDestination.get(d.id) ?? [])
+                .filter((v) => respondedIds.has(v.participantId) && v.level >= 1)
+                .map((v) => v.budgetAmount),
+              respondedCount,
+            ),
+            event.anonymity,
+          )
+        : null,
     })),
   });
-
-  const respondedCount = participantRows.filter((p) => p.respondedAt !== null).length;
 
   // 找出「一个方案都没产出」的目的地，单独说明原因，不让它们无声消失。
   //
@@ -88,7 +106,7 @@ resultsRoute.get('/api/events/:id/results', async (c) => {
     ? plans.map((p) => ({ ...p, missing: p.missing.filter((m) => m.reason !== 'unwilling') }))
     : plans;
 
-  return c.json<ResultsResponse>({
+  const result: ResultsResponse = {
     plans: safePlans,
     slotCount,
     respondedCount,
@@ -98,5 +116,26 @@ resultsRoute.get('/api/events/:id/results', async (c) => {
       .map((p) => ({ id: p.id, name: p.name })),
     slotStarts: allSlotStarts(event.rangeStart, slotCount, event.granularity),
     unreachable,
-  });
+  };
+
+  if (c.req.query('view') === 'page') {
+    const page: ResultsPageResponse = {
+      detail: {
+        event: { ...event, adminKeyHash: '' },
+        slotCount,
+        participants: participantRows.map((p) => ({
+          id: p.id,
+          name: p.name,
+          isCore: p.isCore,
+          availability: p.availability,
+          respondedAt: p.respondedAt,
+        })),
+        destinations: destinationRows,
+      },
+      results: result,
+    };
+    return c.json<ResultsPageResponse>(page);
+  }
+
+  return c.json<ResultsResponse>(result);
 });

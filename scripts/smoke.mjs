@@ -41,10 +41,10 @@ function head(n, title) {
   console.log(`\n════════ ${n}. ${title} ════════`);
 }
 
-async function call(method, path, body) {
+async function call(method, path, body, extraHeaders = {}) {
   const res = await fetch(`${BASE}${path}`, {
     method,
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...extraHeaders },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   const text = await res.text();
@@ -159,6 +159,17 @@ const res = await call('GET', `/api/events/${EID}/results`);
 const d = res.data;
 assert(d.respondedCount === 4 && d.totalCount === 4, `已填 ${d.respondedCount}/${d.totalCount} 人`);
 assert(d.slotCount === 7, `槽位数 ${d.slotCount}`);
+const resultPage = await call('GET', `/api/events/${EID}/results?view=page`);
+assert(
+  resultPage.status === 200 &&
+    resultPage.data.detail?.event?.id === EID &&
+    resultPage.data.results?.respondedCount === 4,
+  '结果页聚合接口一次返回活动详情和计算结果',
+);
+assert(
+  Array.isArray(resultPage.data.detail?.votes) === false,
+  '结果页聚合接口不返回不需要的投票明细',
+);
 
 console.log('');
 for (const [i, p] of d.plans.entries()) {
@@ -462,7 +473,9 @@ assert(
 
 const anonMine = await call(
   'GET',
-  `/api/events/${anon.data.eventId}?token=${anonTokens['甲']}`,
+  `/api/events/${anon.data.eventId}`,
+  undefined,
+  { 'X-Participant-Token': anonTokens['甲'] },
 );
 assert(
   anonMine.data.votes.length === 1 && anonMine.data.votes[0].level === 2,
@@ -501,6 +514,62 @@ assert(
 await call('POST', `/api/events/${anon.data.eventId}/delete`, {
   adminKey: anon.data.adminKey,
 });
+
+head(19, '预算金额 —— 个人上限、统计与非法输入');
+
+const budgetEvent = await call('POST', '/api/events', {
+  title: '预算测试',
+  rangeStart: RANGE_START,
+  rangeEnd: RANGE_END,
+  granularity: 'day',
+  collectDestinations: true,
+  budgetEnabled: true,
+  anonymity: 'open',
+});
+assert(budgetEvent.status === 200, '预算活动创建成功');
+const budgetTokens = {};
+for (const n of ['甲', '乙', '丙']) {
+  const r = await call('POST', `/api/events/${budgetEvent.data.eventId}/join`, { name: n });
+  budgetTokens[n] = r.data.token;
+}
+const budgetDest = await call(
+  'POST',
+  `/api/events/${budgetEvent.data.eventId}/destinations`,
+  { token: budgetTokens['甲'], name: '预算目的地', daysNeeded: 2 },
+);
+assert(budgetDest.status === 200, '预算目的地提名成功');
+const budgetValues = { 甲: 1000, 乙: 2000, 丙: 3000 };
+for (const n of Object.keys(budgetTokens)) {
+  const r = await call('POST', `/api/events/${budgetEvent.data.eventId}/submit`, {
+    token: budgetTokens[n],
+    name: n,
+    availability: avail('2222222'),
+    votes: [{ destinationId: budgetDest.data.destinationId, level: 2, budgetAmount: budgetValues[n] }],
+  });
+  assert(r.status === 200, `${n} 的预算提交成功`);
+}
+const budgetResults = await call('GET', `/api/events/${budgetEvent.data.eventId}/results`);
+const budgetStats = budgetResults.data.plans?.[0]?.budgetStats;
+assert(
+  budgetStats?.median === 2000 &&
+    budgetStats?.average === 2000 &&
+    budgetStats?.min === 1000 &&
+    budgetStats?.max === 3000 &&
+    budgetStats?.filledCount === 3 &&
+    budgetStats?.totalCount === 3,
+  `预算统计正确（实际 ${JSON.stringify(budgetStats)}）`,
+);
+const invalidBudget = await call('POST', `/api/events/${budgetEvent.data.eventId}/submit`, {
+  token: budgetTokens['甲'],
+  name: '甲',
+  availability: avail('2222222'),
+  votes: [{ destinationId: budgetDest.data.destinationId, level: 2, budgetAmount: 100000001 }],
+});
+assert(invalidBudget.status === 400, `超出上限的预算被拒绝（实际 ${invalidBudget.status}）`);
+const budgetDeleted = await call('POST', `/api/events/${budgetEvent.data.eventId}/delete`, {
+  adminKey: budgetEvent.data.adminKey,
+});
+assert(budgetDeleted.status === 200, '预算测试活动已清理');
 
 // ─────────────────────────────────────────────
 

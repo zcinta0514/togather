@@ -11,6 +11,9 @@ interface Props {
   slotStarts: number[];
 }
 
+/** 姓名列表是辅助信息，限制每格的 DOM 数量，避免大群活动展开热力图时膨胀。 */
+const MAX_NAMES_PER_SLOT = 12;
+
 /**
  * 只读热力图：颜色深浅 = 能来的人占比。
  * 复用 TimeGrid 的只读模式，避免两套网格代码走形。
@@ -35,16 +38,32 @@ export default function Heatmap({
 
     const heat: number[] = [];
     const counts: number[] = [];
-    const namesAt: string[][] = [];
+    const namesAt: Array<{ labels: string[]; omitted: number }> = [];
     for (let i = 0; i < slotCount; i++) {
-      const yes = decoded.filter((d) => d.levels[i] === 2).map((d) => d.name);
-      const maybe = decoded.filter((d) => d.levels[i] === 1).map((d) => d.name);
+      let yesCount = 0;
+      let maybeCount = 0;
+      const labels: string[] = [];
+      for (const d of decoded) {
+        const level = d.levels[i];
+        if (level === 2) {
+          yesCount++;
+          if (labels.length < MAX_NAMES_PER_SLOT) labels.push(`${d.name} ✓`);
+        } else if (level === 1) {
+          maybeCount++;
+          if (labels.length < MAX_NAMES_PER_SLOT) labels.push(`${d.name} ~`);
+        }
+      }
       // 「勉强」算半分 —— 一个人勉强可以，不等于他不来，但也不等于他一定来
-      heat.push(responded.length ? (yes.length + maybe.length * 0.5) / responded.length : 0);
+      heat.push(
+        responded.length ? (yesCount + maybeCount * 0.5) / responded.length : 0,
+      );
       // 格子里显示的人数只算「明确可以」的，不把「勉强」算进去 ——
       // 显示「4 人」却只有 3 个人确定能来，是会误导人的
-      counts.push(yes.length);
-      namesAt.push([...yes.map((n) => `${n} ✓`), ...maybe.map((n) => `${n} ~`)]);
+      counts.push(yesCount);
+      namesAt.push({
+        labels,
+        omitted: Math.max(0, yesCount + maybeCount - labels.length),
+      });
     }
     return { heat, counts, namesAt };
   }, [responded, slotCount]);
@@ -67,7 +86,7 @@ export default function Heatmap({
       />
       <ul className="mt-8 space-y-1 text-[11px] text-ink-400">
         {namesAt.map((names, i) => {
-          if (names.length === 0) return null;
+          if (names.labels.length === 0) return null;
           const ts = slotStarts[i] ?? rangeStart;
           const d = new Date((ts + 8 * 3600) * 1000);
           return (
@@ -81,7 +100,8 @@ export default function Heatmap({
                     上午那一格从来没对过。同一个坑 slots.ts 里已经标过注释。 */}
                 {granularity === 'half_day' ? (i % 2 === 0 ? ' 上午' : ' 下午') : ''}
               </span>
-              ：{names.join('、')}
+              ：{names.labels.join('、')}
+              {names.omitted > 0 && `　另有 ${names.omitted} 人`}
             </li>
           );
         })}

@@ -1,4 +1,4 @@
-import type { AvailabilityLevel, PlanDto, VoteLevel } from '../shared/types';
+import type { AvailabilityLevel, BudgetStats, PlanDto, VoteLevel } from '../shared/types';
 import { feasibleWindows, type Window } from './windows';
 
 export interface PlannerParticipant {
@@ -15,6 +15,7 @@ export interface PlannerDestination {
   daysNeeded: number;
   budgetLevel: number | null;
   votes: Record<string, VoteLevel>; // participantId -> level
+  budgetStats?: BudgetStats | null;
 }
 
 export interface PlannerInput {
@@ -140,6 +141,7 @@ export function buildPlans(input: PlannerInput): PlanDto[] {
         blockedReason: blocked
           ? `核心成员 ${missingCores.map((c) => c.name).join('、')} 到不了`
           : undefined,
+        budgetStats: d.budgetStats ?? null,
       });
     }
   }
@@ -250,4 +252,3 @@ function rankAndTrim(plans: PlanDto[]): PlanDto[] {
   }
   return picked;
 }
-

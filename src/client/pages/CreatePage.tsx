@@ -26,7 +26,7 @@ const toggles: Array<{
   {
     key: 'budgetEnabled',
     label: '启用预算维度',
-    hint: '每个目的地标个大致花销，避免「不是不想去，是太贵」',
+    hint: '每个人填写自己最多愿意花多少，避免「不是不想去，是太贵」',
   },
 ];
 

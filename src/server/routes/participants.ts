@@ -5,6 +5,8 @@ import { getDb, type Env } from '../db';
 import { shortId, secret, now } from '../ids';
 import { slotCountFor } from '../../core/slots';
 import { encodeAvailability } from '../../core/bitmap';
+import { parseBudgetAmount } from '../../core/budget';
+import { MAX_BUDGET_AMOUNT } from '../../shared/types';
 import type { JoinRequest, JoinResponse, SubmitRequest, VoteLevel } from '../../shared/types';
 
 export const participantsRoute = new Hono<{ Bindings: Env }>();
@@ -144,17 +146,6 @@ participantsRoute.post('/api/events/:id/submit', async (c) => {
     return c.json({ error: '这个活动里已经有人叫这个名字了，换一个吧' }, 409);
   }
 
-  const ts = now();
-  await db
-    .update(participants)
-    .set({
-      name: nextName,
-      availability: encodeAvailability(body.availability),
-      respondedAt: me.respondedAt ?? ts,
-      updatedAt: ts,
-    })
-    .where(eq(participants.id, me.id));
-
   // 覆盖式写入投票。
   //
   // 这里有两个坑，都会让人「静默地变成哪个地方都不想去」：
@@ -169,19 +160,41 @@ participantsRoute.post('/api/events/:id/submit', async (c) => {
   const dests = await db.select().from(destinations).where(eq(destinations.eventId, eventId));
   const okIds = new Set(dests.map((d) => d.id));
 
-  const byDest = new Map<string, number>();
+  const byDest = new Map<string, { level: VoteLevel; budgetAmount: number | null }>();
   for (const v of body.votes ?? []) {
     if (validLevels.has(v.level) && okIds.has(v.destinationId)) {
-      byDest.set(v.destinationId, v.level);
+      const parsedAmount = parseBudgetAmount(v.budgetAmount);
+      if (!parsedAmount.ok) {
+        return c.json(
+          { error: `预算金额必须是 0 到 ${MAX_BUDGET_AMOUNT} 之间的整数` },
+          400,
+        );
+      }
+      byDest.set(v.destinationId, {
+        level: v.level as VoteLevel,
+        // 没启用预算的活动不保存客户端夹带的预算数据。
+        budgetAmount: event.budgetEnabled ? parsedAmount.value : null,
+      });
     }
   }
-  const toInsert = [...byDest].map(([destinationId, level]) => ({
+  const toInsert = [...byDest].map(([destinationId, vote]) => ({
     participantId: me.id,
     destinationId,
-    level: level as VoteLevel,
+    level: vote.level,
+    budgetAmount: vote.budgetAmount,
   }));
 
+  const ts = now();
   await db.batch([
+    db
+      .update(participants)
+      .set({
+        name: nextName,
+        availability: encodeAvailability(body.availability),
+        respondedAt: me.respondedAt ?? ts,
+        updatedAt: ts,
+      })
+      .where(eq(participants.id, me.id)),
     db.delete(votes).where(eq(votes.participantId, me.id)),
     ...(toInsert.length > 0 ? [db.insert(votes).values(toInsert)] : []),
   ]);

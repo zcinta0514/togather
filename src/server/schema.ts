@@ -63,6 +63,11 @@ export const votes = sqliteTable(
     // 注意：drizzle 的 integer 不支持 enum 选项，所以这里推断出的是 number。
     // 出库后在响应边界转成 VoteLevel（见 routes/events.ts）。
     level: integer('level').notNull(),
+    // 这个人对该目的地「最多愿意为这趟花多少」（人民币元），选填。
+    budgetAmount: integer('budget_amount'),
   },
-  (t) => [primaryKey({ columns: [t.participantId, t.destinationId] })],
+  (t) => [
+    primaryKey({ columns: [t.participantId, t.destinationId] }),
+    index('votes_destination_idx').on(t.destinationId),
+  ],
 );
